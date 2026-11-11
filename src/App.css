@@ -125,9 +125,9 @@ input[type="range"] { accent-color: var(--accent); }
   gap: 1.1rem;
 }
 [data-theme="midnight"] .panel { backdrop-filter: blur(24px); background: color-mix(in srgb, var(--panel) 80%, transparent); }
-.panel h3 { margin: 0 0 0.5rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.panel h2 { margin: 0 0 0.5rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .panel .row { display: flex; justify-content: space-between; align-items: baseline; }
-.panel .row h3 { margin: 0 0 0.5rem; }
+.panel .row h2 { margin: 0 0 0.5rem; }
 .value { font: 600 1.4rem var(--font-display); }
 .zoomrow { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
 .zoomrow input { flex: 1; }
@@ -153,7 +153,7 @@ input[type="range"] { accent-color: var(--accent); }
   border-right: 1px solid var(--border);
   box-shadow: 8px 0 30px rgb(0 0 0 / 0.15);
 }
-.drawer h3 { margin: 0 0 0.75rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.drawer h2 { margin: 0 0 0.75rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .toc { list-style: none; margin: 0; padding: 0; }
 .toc-item {
   display: block; width: 100%; min-height: 2.5rem; text-align: start;
@@ -171,4 +171,24 @@ input[type="range"] { accent-color: var(--accent); }
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -12px 40px rgb(0 0 0 / 0.3);
   }
+}
+
+/* ---- accessibility ---- */
+.skip-link {
+  position: absolute; left: 0.75rem; top: -4rem; z-index: 100; padding: 0.6rem 1rem;
+  border-radius: var(--radius); background: var(--accent); color: var(--accent-fg); font: 600 0.9rem var(--font-ui); text-decoration: none;
+}
+.skip-link:focus { top: 0.75rem; }
+.bar h1.title { margin: 0; font-weight: 400; }
+#main:focus { outline: none; }
+
+/* One consistent, visible focus ring for every control (inputs, selects, textareas, custom focusables). */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+/* Respect the OS "reduce motion" setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .card-open:hover .cover, .ann-dot:hover { transform: none; }
 }

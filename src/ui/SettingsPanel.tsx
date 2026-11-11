@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { detectDeviceClass, useSettings } from "../state/settings";
-import { surfaceList, themeList, type Surface } from "../themes/themes";
+import { surfaceList, themeList, type SurfacePref } from "../themes/themes";
 import {
   UI_SCALE_MAX,
   UI_SCALE_MIN,
@@ -9,6 +9,7 @@ import {
   ZOOM_STEP,
   type LayoutMode,
 } from "../reader/zoom";
+import { Section } from "./Section";
 
 const PRESETS: [string, number][] = [
   ["Small", 90],
@@ -35,21 +36,20 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
   const s = useSettings();
   const restoreInput = useRef<HTMLInputElement>(null);
   const device = detectDeviceClass();
-  const surfaceValue: Surface | "auto" = s.surface ?? "auto";
+  const surfaceValue: SurfacePref | "auto" = s.surface ?? "auto";
 
   return (
-    <div className="panel" role="dialog" aria-label="Text settings">
-      <section>
-        <h3>Theme</h3>
-        <div className="seg">
+    <div className="panel" role="dialog" aria-label="Display settings">
+      <Section title="Theme">
+        <div className="seg" role="group" aria-label="Theme">
           {themeList.map((t) => (
             <button key={t.id} aria-pressed={s.themeId === t.id} onClick={() => s.setTheme(t.id)}>
               {t.name}
             </button>
           ))}
         </div>
-        <div className="seg">
-          {(["auto", ...surfaceList] as const).map((v) => (
+        <div className="seg" role="group" aria-label="Reading surface">
+          {(["auto", ...surfaceList, "system"] as const).map((v) => (
             <button
               key={v}
               aria-pressed={surfaceValue === v}
@@ -59,20 +59,17 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
             </button>
           ))}
         </div>
-      </section>
+      </Section>
 
-      <section>
-        <div className="row">
-          <h3>Text size</h3>
-          <span className="value" aria-live="polite">{s.zoom}%</span>
-        </div>
+      <Section title="Text size" aside={<span className="value" aria-hidden="true">{s.zoom}%</span>}>
         <div className="zoomrow">
           <button className="btn icon" aria-label="Smaller text" onClick={s.zoomOut}>
-            <span style={{ fontSize: "0.9rem" }}>A</span>
+            <span style={{ fontSize: "0.9rem" }} aria-hidden="true">A</span>
           </button>
           <input
             type="range"
             aria-label="Text size"
+            aria-valuetext={`${s.zoom} percent`}
             min={ZOOM_MIN}
             max={ZOOM_MAX}
             step={ZOOM_STEP}
@@ -80,10 +77,10 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
             onChange={(e) => s.setZoom(Number(e.target.value))}
           />
           <button className="btn icon" aria-label="Larger text" onClick={s.zoomIn}>
-            <span style={{ fontSize: "1.5rem" }}>A</span>
+            <span style={{ fontSize: "1.5rem" }} aria-hidden="true">A</span>
           </button>
         </div>
-        <div className="seg">
+        <div className="seg" role="group" aria-label="Text size presets">
           {PRESETS.map(([label, v]) => (
             <button key={label} aria-pressed={s.zoom === v} onClick={() => s.setZoom(v)}>
               {label}
@@ -91,11 +88,10 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
           ))}
         </div>
         <p className="hint">Ctrl/Cmd + or − to zoom, Ctrl/Cmd 0 to reset. Ctrl + scroll also works.</p>
-      </section>
+      </Section>
 
-      <section>
-        <h3>Page layout</h3>
-        <div className="seg">
+      <Section title="Page layout">
+        <div className="seg" role="group" aria-label="Page layout">
           {LAYOUTS.map(([v, label]) => (
             <button key={v} aria-pressed={s.layoutMode === v} onClick={() => s.setLayoutMode(v)}>
               {label}
@@ -105,6 +101,7 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
         <label className="field">
           <span>Line length <b>{s.charsPerLine} characters</b></span>
           <input type="range" min={45} max={75} step={1} value={s.charsPerLine}
+            aria-valuetext={`${s.charsPerLine} characters`}
             onChange={(e) => s.setCharsPerLine(Number(e.target.value))} />
         </label>
         <label className="field">
@@ -118,21 +115,21 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
         <label className="check">
           <input type="checkbox" checked={s.hyphenate} onChange={(e) => s.setHyphenate(e.target.checked)} /> Hyphenate
         </label>
-      </section>
+      </Section>
 
-      <section>
+      <Section title="Interface">
         <label className="field">
           <span>Interface size <b>{s.uiScale}%</b></span>
           <input type="range" min={UI_SCALE_MIN} max={UI_SCALE_MAX} step={10} value={s.uiScale}
+            aria-valuetext={`${s.uiScale} percent`}
             onChange={(e) => s.setUiScale(Number(e.target.value))} />
         </label>
         <p className="hint">Settings are saved for this screen size ({device}).</p>
-      </section>
+      </Section>
 
       {data ? (
-        <section>
-          <h3>Your data</h3>
-          <div className="seg">
+        <Section title="Your data">
+          <div className="seg" role="group" aria-label="Backup">
             <button onClick={data.onExport}>Export notes</button>
             <button onClick={() => restoreInput.current?.click()}>Restore</button>
           </div>
@@ -141,6 +138,7 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
             type="file"
             accept=".json,application/json"
             hidden
+            aria-label="Backup file to restore"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) data.onRestore(f);
@@ -150,7 +148,7 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
           <p className="hint" role="status" aria-live="polite">
             {data.message ?? "Saves your notes, highlights, bookmarks and reading positions to a file. Your books are not included."}
           </p>
-        </section>
+        </Section>
       ) : null}
     </div>
   );

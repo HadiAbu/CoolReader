@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Surface, ThemeId } from "../themes/themes";
+import type { SurfacePref, ThemeId } from "../themes/themes";
 import {
   clampUiScale,
   clampZoom,
@@ -14,7 +14,7 @@ import {
 export interface SettingsState {
   themeId: ThemeId;
   /** null means "use the theme's default surface". */
-  surface: Surface | null;
+  surface: SurfacePref;
   /** Reader text zoom, percent. */
   zoom: number;
   /** App chrome scale, percent. */
@@ -26,7 +26,7 @@ export interface SettingsState {
   hyphenate: boolean;
 
   setTheme: (id: ThemeId) => void;
-  setSurface: (s: Surface | null) => void;
+  setSurface: (s: SurfacePref) => void;
   setZoom: (z: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -42,7 +42,7 @@ export interface SettingsState {
 /** Sensible per-device starting points; users can override and the override is saved per device class. */
 export const defaultsFor = (device: DeviceClass) => ({
   themeId: "paper" as ThemeId,
-  surface: null as Surface | null,
+  surface: null as SurfacePref,
   zoom: device === "phone" ? 110 : ZOOM_DEFAULT,
   uiScale: 100,
   layoutMode: "auto" as LayoutMode,

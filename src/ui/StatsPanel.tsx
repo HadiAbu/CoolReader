@@ -11,6 +11,7 @@ import {
   weekdayName,
   type ReadingRow,
 } from "../stats/logic";
+import { Section } from "./Section";
 import "./Stats.css";
 
 interface Props {
@@ -34,8 +35,7 @@ export function StatsPanel({ rows, books }: Props) {
 
   return (
     <div className="panel stats" role="dialog" aria-label="Reading statistics">
-      <section>
-        <h3>Reading time</h3>
+      <Section title="Reading time">
         <dl className="stat-grid">
           <div><dt>Today</dt><dd>{formatDuration(secondsOn(rows, today))}</dd></div>
           <div><dt>Last 7 days</dt><dd>{formatDuration(weekTotal)}</dd></div>
@@ -43,10 +43,9 @@ export function StatsPanel({ rows, books }: Props) {
           <div><dt>All time</dt><dd>{formatDuration(totalSeconds(rows))}</dd></div>
           <div><dt>Books finished</dt><dd>{finished}</dd></div>
         </dl>
-      </section>
+      </Section>
 
-      <section>
-        <h3>Last 7 days</h3>
+      <Section title="Last 7 days">
         {empty ? (
           <p className="hint">Nothing yet. Time is counted while you read, and stops when you are idle.</p>
         ) : (
@@ -85,11 +84,10 @@ export function StatsPanel({ rows, books }: Props) {
             </div>
           </>
         )}
-      </section>
+      </Section>
 
       {top.length ? (
-        <section>
-          <h3>Most read</h3>
+        <Section title="Most read">
           <ul className="top-list">
             {top.map((b) => (
               <li key={b.id}>
@@ -101,7 +99,7 @@ export function StatsPanel({ rows, books }: Props) {
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       ) : null}
     </div>
   );

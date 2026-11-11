@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { hitCount, isSearchable, searchSummary, type SearchHit, type SearchState } from "../search/logic";
+import { Section } from "./Section";
 import "./Search.css";
 
 interface Props {
@@ -30,6 +31,7 @@ export function SearchPanel({ state, onSearch, onGo, onClear }: Props) {
 
   return (
     <aside className="drawer find" aria-label="Search in book">
+      <h2 className="sr">Search in book</h2>
       <form className="search-form" onSubmit={submit} role="search">
         <input
           ref={inputRef}
@@ -60,8 +62,7 @@ export function SearchPanel({ state, onSearch, onGo, onClear }: Props) {
 
       {count > 0
         ? state.groups.map((g) => (
-            <section key={g.label} className="notes-group">
-              <h4>{g.label}</h4>
+            <Section key={g.label} title={g.label} level={3} className="notes-group">
               <ul>
                 {g.hits.map((h, i) => (
                   <li key={`${h.cfi}-${i}`}>
@@ -75,7 +76,7 @@ export function SearchPanel({ state, onSearch, onGo, onClear }: Props) {
                   </li>
                 ))}
               </ul>
-            </section>
+            </Section>
           ))
         : null}
     </aside>

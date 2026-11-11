@@ -22,7 +22,7 @@
 }
 .ann-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 16%, transparent); }
 .ann-btn:disabled { opacity: 0.45; cursor: default; }
-.ann-btn.danger { color: #c0392b; }
+.ann-btn.danger { color: #ad3327; }
 [data-surface="dark"] .ann-btn.danger { color: #ff8a80; }
 .ann-note textarea {
   width: 16rem; max-width: 100%; resize: vertical; padding: 0.5rem 0.6rem; border-radius: calc(var(--radius) - 4px);
@@ -33,8 +33,8 @@
 /* Notes drawer */
 .drawer.notes { width: min(24rem, 92%); }
 .notes-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.75rem; }
-.notes-head h3 { margin: 0; }
-.notes-group h4 { margin: 1rem 0 0.4rem; font: 600 0.9rem var(--font-display); }
+.notes-head h2 { margin: 0; }
+.notes-group h3 { margin: 1rem 0 0.4rem; font: 600 0.9rem var(--font-display); }
 .notes-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .notes-item { position: relative; display: flex; align-items: stretch; gap: 0.25rem; }
 .notes-go {
@@ -47,7 +47,7 @@
 .notes-note { color: var(--muted); font-size: 0.8rem; }
 .notes-bm { font-weight: 600; }
 .notes-del { width: 2rem; border: 0; border-radius: 0.5rem; background: transparent; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
-.notes-del:hover { color: #c0392b; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.notes-del:hover { color: #ad3327; background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
 /* Header bookmark toggle */
 .btn.bm[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }

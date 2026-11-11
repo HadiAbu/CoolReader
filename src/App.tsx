@@ -15,13 +15,17 @@ import {
   type ScreenRect,
   type SelectionInfo,
 } from "./reader/ReaderView";
+import { keyAction, shouldHandleKey, type KeyAction } from "./reader/keys";
 import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchState } from "./search/logic";
 import type { ReadingRow } from "./stats/logic";
 import { useReadingTimer } from "./stats/useReadingTimer";
+import { toggleFullscreen } from "./platform/fullscreen";
+import { openExternal } from "./platform/openExternal";
+import { initOpenWith } from "./platform/openWith";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
-import { applyTheme, readerCss, themes } from "./themes/themes";
+import { applyTheme, readerCss, resolveSurface, themes } from "./themes/themes";
 import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
 import { NotesPanel } from "./ui/NotesPanel";
@@ -30,6 +34,20 @@ import { SettingsPanel } from "./ui/SettingsPanel";
 import { StatsPanel } from "./ui/StatsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
+
+/** Tracks the OS light/dark preference so "System" can follow it live. */
+const useSystemDark = () => {
+  const query = "(prefers-color-scheme: dark)";
+  const [dark, setDark] = useState(() => window.matchMedia?.(query).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return dark;
+};
 
 const useViewportWidth = () => {
   const [w, setW] = useState(() => window.innerWidth);
@@ -48,7 +66,8 @@ export default function App() {
   const settings = useSettings();
   const { themeId, zoom, layoutMode, charsPerLine, lineHeight, justify, hyphenate, uiScale } = settings;
   const theme = themes[themeId];
-  const surface = settings.surface ?? theme.defaultSurface;
+  const systemDark = useSystemDark();
+  const surface = resolveSurface(settings.surface, theme, systemDark);
   const viewportWidth = useViewportWidth();
   const lib = useLibrary(repo);
 
@@ -278,7 +297,7 @@ export default function App() {
   const exportData = async () => {
     try {
       const lists = await Promise.all(lib.books.map((b) => annotationRepo.list(b.id)));
-      const backup = buildBackup(lib.books, lists.flat());
+      const backup = buildBackup(lib.books, lists.flat(), Date.now(), await statsRepo.list());
       downloadText(backupFilename(), JSON.stringify(backup, null, 2));
       const notes = lists.flat().length;
       setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}. Look for ${backupFilename()} in your Downloads folder.`);
@@ -297,8 +316,9 @@ export default function App() {
       const existing = new Map(
         await Promise.all(parsed.backup.books.map(async (b) => [b.id, await annotationRepo.list(b.id)] as const)),
       );
-      const plan = planRestore(parsed.backup, lib.books, existing);
+      const plan = planRestore(parsed.backup, lib.books, existing, await statsRepo.list());
       for (const a of plan.annotationsToPut) await annotationRepo.put(a);
+      for (const r of plan.readingToPut) await statsRepo.put(r);
       for (const u of plan.progressUpdates) {
         await lib.patch(u.id, { progress: u.progress, cfi: u.cfi, lastOpenedAt: u.lastOpenedAt });
       }
@@ -308,6 +328,63 @@ export default function App() {
       setDataMessage(`Restore failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+
+  // ---- keyboard: the window and the book frames feed the same handler ----
+  const handleKeyAction = useCallback(
+    (a: KeyAction) => {
+      const api = apiRef.current;
+      switch (a) {
+        case "left": api?.left(); break;
+        case "right": api?.right(); break;
+        case "prev": api?.prev(); break;
+        case "next": api?.next(); break;
+        case "first": api?.goToFraction(0); break;
+        case "last": api?.goToFraction(1); break;
+        case "fullscreen": void toggleFullscreen(); break;
+        case "escape":
+          // Close the innermost thing first: the floating toolbar, then a side panel.
+          if (selection || active) dismissPopover();
+          else if (panel !== "none") setPanel("none");
+          break;
+      }
+    },
+    [selection, active, panel, dismissPopover],
+  );
+
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const a = keyAction(e);
+      if (!a) return;
+      const global = a === "escape" || a === "fullscreen";
+      // Page keys only turn pages while reading, and never steal keys from text fields.
+      if (!global && (view.kind !== "reader" || !shouldHandleKey(e, e.target as HTMLElement | null))) return;
+      e.preventDefault();
+      handleKeyAction(a);
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [view.kind, handleKeyAction]);
+
+  // ---- "Open with Folio": files handed over by the OS (double-click in Explorer, or a second launch) ----
+  const handleOsFiles = async (files: File[]) => {
+    const res = await lib.importFiles(files);
+    const first = res?.opened[0];
+    if (first) await openBook(first);
+  };
+  const osFilesRef = useRef(handleOsFiles);
+  osFilesRef.current = handleOsFiles;
+  useEffect(() => {
+    let off = () => {};
+    let disposed = false;
+    void initOpenWith((files) => void osFilesRef.current(files)).then((unsubscribe) => {
+      if (disposed) unsubscribe();
+      else off = unsubscribe;
+    });
+    return () => {
+      disposed = true;
+      off();
+    };
+  }, []);
 
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
@@ -346,7 +423,7 @@ export default function App() {
     <div className="popover-anchor">
       <button
         className="btn icon aa"
-        aria-label="Text settings"
+        aria-label="Display settings"
         aria-pressed={panel === "settings"}
         onClick={() => setPanel(panel === "settings" ? "none" : "settings")}
       >
@@ -366,11 +443,22 @@ export default function App() {
         importFiles(e.dataTransfer.files);
       }}
     >
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <input
         ref={inputRef}
         type="file"
         multiple
         accept=".epub,.mobi,.azw3,.fb2,.cbz,application/epub+zip"
+        aria-label="Add books"
         hidden
         onChange={(e) => {
           importFiles(e.target.files);
@@ -379,7 +467,7 @@ export default function App() {
       />
 
       {view.kind === "library" ? (
-        <main className="stage lib-stage">
+        <main id="main" tabIndex={-1} className="stage lib-stage">
           <Library
             repo={repo}
             theme={theme}
@@ -409,7 +497,7 @@ export default function App() {
         <>
           <header className="bar">
             <button className="btn" onClick={backToLibrary} aria-label="Back to library">‹ Library</button>
-            <div className="title">
+            <h1 className="title">
               {info ? (
                 <>
                   <strong>{info.title}</strong>
@@ -418,7 +506,7 @@ export default function App() {
               ) : (
                 <strong>{view.book.title}</strong>
               )}
-            </div>
+            </h1>
             <div className="actions">
               <button
                 className="btn icon"
@@ -443,7 +531,7 @@ export default function App() {
               </button>
               <button
                 className="btn icon bm"
-                aria-label={bookmarksHere.length ? "Remove bookmark" : "Add bookmark"}
+                aria-label="Bookmark this page"
                 aria-pressed={bookmarksHere.length > 0}
                 disabled={!progress?.cfi}
                 onClick={() => void toggleBookmark()}
@@ -466,7 +554,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="stage">
+          <main id="main" tabIndex={-1} className="stage">
             <ReaderView
               key={view.book.id}
               file={view.file}
@@ -481,6 +569,8 @@ export default function App() {
               onZoomAction={doZoom}
               onPinch={onPinch}
               onFind={() => setPanel("search")}
+              onKeyAction={handleKeyAction}
+              onExternalLink={(href) => void openExternal(href)}
               onActivity={timer.touch}
               onSelection={(s) => {
                 setSelection(s);
@@ -540,7 +630,7 @@ export default function App() {
 
             {panel === "toc" && info ? (
               <aside className="drawer" aria-label="Contents">
-                <h3>Contents</h3>
+                <h2>Contents</h2>
                 <Toc
                   items={info.toc}
                   activeHref={progress?.tocItem?.href}

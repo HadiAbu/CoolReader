@@ -20,6 +20,8 @@ export interface ReadingRow {
 
 export interface StatsRepo {
   add(day: string, bookId: string, seconds: number): Promise<void>;
+  /** Write an absolute value (used by restore). */
+  put(row: ReadingRow): Promise<void>;
   list(): Promise<ReadingRow[]>;
 }
 

@@ -24,6 +24,8 @@ export function useLibrary(repo: BookRepo) {
   const [notice, setNotice] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const idsRef = useRef(new Set<string>());
+  const booksRef = useRef<Book[]>([]);
+  booksRef.current = books;
 
   useEffect(() => {
     let cancelled = false;
@@ -47,19 +49,26 @@ export function useLibrary(repo: BookRepo) {
       setImporting(true);
       const summary: ImportSummary = { added: 0, duplicates: 0, unsupported: [], failed: [] };
       const added: Book[] = [];
+      /** Every book the user handed us that is now in the library: new ones and ones we already had. */
+      const opened: Book[] = [];
       for (const f of files) {
         const r = await importBook(f, repo, idsRef.current);
         if (r.status === "added") {
           summary.added++;
           added.push(r.book);
-        } else if (r.status === "duplicate") summary.duplicates++;
+          opened.push(r.book);
+        } else if (r.status === "duplicate") {
+          summary.duplicates++;
+          const existing = booksRef.current.find((b) => b.id === r.id);
+          if (existing) opened.push(existing);
+        }
         else if (r.status === "unsupported") summary.unsupported.push(r.name);
         else summary.failed.push({ name: r.name, error: r.error });
       }
       if (added.length) setBooks((prev) => [...prev, ...added]);
       setNotice(summarize(summary) || null);
       setImporting(false);
-      return summary;
+      return { summary, opened };
     },
     [repo],
   );

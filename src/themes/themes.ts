@@ -13,6 +13,9 @@ export interface SurfaceTokens {
   border: string;
   link: string;
   mark: string;
+  /** Overrides the theme accent on this surface when the theme accent would fail contrast here. */
+  accent?: string;
+  accentFg?: string;
 }
 
 export interface Theme {
@@ -32,13 +35,14 @@ export interface Theme {
   surfaces: Record<Surface, SurfaceTokens>;
 }
 
-const sepia = (accent: string): SurfaceTokens => ({
+// Sepia is shared; each theme passes a link colour that reaches 4.5:1 on it (checked in themes.test.ts).
+const sepia = (link: string): SurfaceTokens => ({
   bg: "#F1E6CF",
   fg: "#3B2F20",
-  muted: "#7A6A52",
+  muted: "#6b5d48",
   panel: "#E8DBBF",
   border: "#D6C6A3",
-  link: accent,
+  link,
   mark: "#E9C77A",
 });
 
@@ -56,8 +60,8 @@ export const themes: Record<ThemeId, Theme> = {
     backdrop: "",
     defaultSurface: "light",
     surfaces: {
-      light: { bg: "#F4EDE0", fg: "#2B2118", muted: "#6B5A47", panel: "#E8DDC8", border: "#DCCFB8", link: "#B5532E", mark: "#F0C98A" },
-      sepia: sepia("#B5532E"),
+      light: { bg: "#F4EDE0", fg: "#2B2118", muted: "#6B5A47", panel: "#E8DDC8", border: "#DCCFB8", link: "#9d4828", mark: "#F0C98A" },
+      sepia: sepia("#9a4727"),
       dark: { bg: "#1E1A16", fg: "#E8DDC8", muted: "#A39580", panel: "#2A2520", border: "#3A332B", link: "#E58A62", mark: "#7A5A2A" },
     },
   },
@@ -75,9 +79,10 @@ export const themes: Record<ThemeId, Theme> = {
       "radial-gradient(circle at 0% 0%, #5B4BFF55, transparent 40%), radial-gradient(circle at 100% 100%, #FF5CA044, transparent 40%)",
     defaultSurface: "dark",
     surfaces: {
-      light: { bg: "#F4F3FF", fg: "#15142B", muted: "#5C5A80", panel: "#E6E4FA", border: "#D3D0F0", link: "#5B4BFF", mark: "#CFC9FF" },
-      sepia: sepia("#6B4BFF"),
-      dark: { bg: "#0B0C16", fg: "#D9D8EE", muted: "#A9A8C8", panel: "#171828", border: "#2A2C44", link: "#9AA9FF", mark: "#5B4BFF66" },
+      // The lilac accent suits the dark surface; on light surfaces it is too pale for text or UI, so use a deeper one.
+      light: { bg: "#F4F3FF", fg: "#15142B", muted: "#5C5A80", panel: "#E6E4FA", border: "#D3D0F0", link: "#5B4BFF", mark: "#CFC9FF", accent: "#5d53ab", accentFg: "#FFFFFF" },
+      sepia: { ...sepia("#5d41de"), accent: "#5d53ab", accentFg: "#FFFFFF" },
+      dark: { bg: "#0B0C16", fg: "#D9D8EE", muted: "#A9A8C8", panel: "#171828", border: "#2A2C44", link: "#9AA9FF", mark: "#5B4BFF66", accentFg: "#0B0C16" },
     },
   },
   quiet: {
@@ -93,8 +98,8 @@ export const themes: Record<ThemeId, Theme> = {
     backdrop: "",
     defaultSurface: "light",
     surfaces: {
-      light: { bg: "#FFFFFF", fg: "#1C1C1C", muted: "#777777", panel: "#F0F0EE", border: "#ECECEA", link: "#1D6FF2", mark: "#CFE1FF" },
-      sepia: sepia("#1D6FF2"),
+      light: { bg: "#FFFFFF", fg: "#1C1C1C", muted: "#6c6c6c", panel: "#F0F0EE", border: "#ECECEA", link: "#1D6FF2", mark: "#CFE1FF" },
+      sepia: sepia("#175ac4"),
       dark: { bg: "#111111", fg: "#E6E6E6", muted: "#9A9A9A", panel: "#1C1C1C", border: "#2C2C2C", link: "#6AA3FF", mark: "#1D4E9A" },
     },
   },
@@ -102,6 +107,21 @@ export const themes: Record<ThemeId, Theme> = {
 
 export const themeList: Theme[] = [themes.paper, themes.midnight, themes.quiet];
 export const surfaceList: Surface[] = ["light", "sepia", "dark"];
+
+/** What the user chose: a fixed surface, "system" (follow the OS), or null for the theme's own default. */
+export type SurfacePref = Surface | "system" | null;
+
+/**
+ * The surface to show. When following the system, a dark OS gives the dark surface; a light OS gives the
+ * theme's own light-ish default (or plain light for themes that default to dark, like Midnight).
+ */
+export const resolveSurface = (pref: SurfacePref, theme: Theme, systemDark: boolean): Surface => {
+  if (pref === "system") {
+    if (systemDark) return "dark";
+    return theme.defaultSurface === "dark" ? "light" : theme.defaultSurface;
+  }
+  return pref ?? theme.defaultSurface;
+};
 
 /** Write a theme's tokens onto an element as CSS variables. */
 export const applyTheme = (el: HTMLElement, theme: Theme, surface: Surface): void => {
@@ -114,8 +134,8 @@ export const applyTheme = (el: HTMLElement, theme: Theme, surface: Surface): voi
     "--border": s.border,
     "--link": s.link,
     "--mark": s.mark,
-    "--accent": theme.accent,
-    "--accent-fg": theme.accentFg,
+    "--accent": s.accent ?? theme.accent,
+    "--accent-fg": s.accentFg ?? theme.accentFg,
     "--radius": `${theme.radius}px`,
     "--font-ui": theme.fontUi,
     "--font-reader": theme.fontReader,

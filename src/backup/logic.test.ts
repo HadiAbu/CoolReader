@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Annotation } from "../annotations/types";
 import type { Book } from "../library/types";
+import type { ReadingRow } from "../stats/logic";
 import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary, type BackupFile } from "./logic";
 
 const book = (o: Partial<Book> & { id: string }): Book => ({
@@ -63,6 +64,52 @@ describe("parseBackup", () => {
   });
 });
 
+describe("reading history in backups", () => {
+  const rr = (day: string, bookId: string, seconds: number): ReadingRow => ({ key: `${day}|${bookId}`, day, bookId, seconds });
+  const base = (reading?: unknown): BackupFile =>
+    ({ format: "folio-backup", version: 1, exportedAt: 1, books: [], ...(reading ? { reading } : {}) }) as BackupFile;
+
+  it("is included only when there is some, and round-trips", () => {
+    expect(buildBackup([], [], 1, []).reading).toBeUndefined();
+    const b = buildBackup([], [], 1, [rr("2026-11-10", "a", 120)]);
+    expect(b.reading).toEqual([{ day: "2026-11-10", bookId: "a", seconds: 120 }]);
+    const r = parseBackup(JSON.stringify(b));
+    expect(r.ok && r.backup.reading).toEqual([{ day: "2026-11-10", bookId: "a", seconds: 120 }]);
+  });
+
+  it("old backups without it still load", () => {
+    const r = parseBackup(JSON.stringify(base()));
+    expect(r.ok && r.backup.reading).toEqual([]);
+  });
+
+  it("skips malformed rows and counts them", () => {
+    const r = parseBackup(JSON.stringify(base([
+      { day: "2026-11-10", bookId: "a", seconds: 60 },
+      { day: "yesterday", bookId: "a", seconds: 60 },
+      { day: "2026-11-10", bookId: "", seconds: 60 },
+      { day: "2026-11-10", bookId: "a", seconds: -5 },
+      "junk",
+    ])));
+    expect(r.ok && r.backup.reading).toHaveLength(1);
+    expect(r.ok && r.skipped).toBe(4);
+  });
+
+  it("restores only the days where the backup has more time (never adds, so repeats are safe)", () => {
+    const backup = base([
+      { day: "2026-11-10", bookId: "a", seconds: 600 },
+      { day: "2026-11-09", bookId: "a", seconds: 100 },
+      { day: "2026-11-08", bookId: "b", seconds: 50 },
+    ]);
+    const have = [rr("2026-11-10", "a", 300), rr("2026-11-09", "a", 900)];
+    const p = planRestore(backup, [], new Map(), have);
+    expect(p.readingToPut.map((r) => [r.key, r.seconds])).toEqual([["2026-11-10|a", 600], ["2026-11-08|b", 50]]);
+    expect(p.summary.readingDays).toBe(2);
+    // Applying the plan and restoring again changes nothing
+    const after = [...have.filter((h) => !p.readingToPut.some((r) => r.key === h.key)), ...p.readingToPut];
+    expect(planRestore(backup, [], new Map(), after).readingToPut).toEqual([]);
+  });
+});
+
 describe("planRestore", () => {
   const backup = (over: Partial<BackupFile["books"][number]> = {}): BackupFile => ({
     format: "folio-backup", version: 1, exportedAt: 1,
@@ -106,13 +153,14 @@ describe("planRestore", () => {
 
 describe("messages", () => {
   it("summarises a restore", () => {
-    const s = { books: 2, missingBooks: ["X"], annotationsAdded: 2, annotationsUpdated: 1, progressRestored: 1 };
+    const s = { books: 2, missingBooks: ["X"], annotationsAdded: 2, annotationsUpdated: 1, progressRestored: 1, readingDays: 3 };
     const m = restoreSummary(s, 2);
     expect(m).toContain("Restored 3 notes");
+    expect(m).toContain("3 days of reading history");
     expect(m).toContain("1 reading position");
     expect(m).toContain("1 book is not in your library yet");
     expect(m).toContain("2 unreadable entries skipped");
-    expect(restoreSummary({ ...s, annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0, missingBooks: [] }, 0)).toBe("No new notes to restore");
+    expect(restoreSummary({ ...s, annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0, readingDays: 0, missingBooks: [] }, 0)).toBe("No new notes to restore");
   });
   it("names the file by date", () => {
     expect(backupFilename(new Date(2026, 10, 3))).toBe("folio-backup-2026-11-03.json");

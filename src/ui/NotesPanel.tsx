@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { groupByChapter, HIGHLIGHT_COLORS, toMarkdown } from "../annotations/logic";
 import type { Annotation } from "../annotations/types";
+import { Section } from "./Section";
 import "./Annotations.css";
 
 interface Props {
@@ -28,7 +29,7 @@ export function NotesPanel({ book, items, onGo, onDelete }: Props) {
   return (
     <aside className="drawer notes" aria-label="Highlights and bookmarks">
       <div className="notes-head">
-        <h3>Notes</h3>
+        <h2>Notes</h2>
         <button className="ann-btn" onClick={copy} disabled={!items.length}>
           {copied === "ok" ? "Copied" : copied === "fail" ? "Copy failed" : "Copy as Markdown"}
         </button>
@@ -37,8 +38,7 @@ export function NotesPanel({ book, items, onGo, onDelete }: Props) {
         <p className="hint">Select text to highlight it, or use the bookmark button to mark your place.</p>
       ) : (
         groups.map((g) => (
-          <section key={g.label} className="notes-group">
-            <h4>{g.label}</h4>
+          <Section key={g.label} title={g.label} level={3} className="notes-group">
             <ul>
               {g.items.map((a) => (
                 <li key={a.id} className="notes-item">
@@ -54,7 +54,7 @@ export function NotesPanel({ book, items, onGo, onDelete }: Props) {
                 </li>
               ))}
             </ul>
-          </section>
+          </Section>
         ))
       )}
     </aside>

@@ -1,8 +1,8 @@
 [package]
 name = "epub-reader"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A beautiful, easy-to-use EPUB reader"
+authors = ["HadiAbu"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,11 +26,17 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Desktop-only plugins (they do not exist on Android/iOS).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
-codegen-units = 1
-lto = true
+# Thin LTO and a few codegen units keep release builds within the memory of an ordinary laptop
+# (fat LTO with one unit needs several GB). The binary is only slightly larger.
+codegen-units = 4
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true
