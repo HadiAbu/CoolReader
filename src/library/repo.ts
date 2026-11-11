@@ -1,5 +1,6 @@
 import type { AnnotationRepo } from "../annotations/types";
-import { createIdbAnnotationRepo, createIdbRepo } from "./idbRepo";
+import type { StatsRepo } from "../stats/logic";
+import { createIdbAnnotationRepo, createIdbRepo, createIdbStatsRepo } from "./idbRepo";
 import type { BookRepo } from "./types";
 
 /**
@@ -9,3 +10,5 @@ import type { BookRepo } from "./types";
 export const repo: BookRepo = createIdbRepo();
 
 export const annotationRepo: AnnotationRepo = createIdbAnnotationRepo();
+
+export const statsRepo: StatsRepo = createIdbStatsRepo();

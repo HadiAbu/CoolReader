@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookmarksOnPage, excerpt, newId, startOf } from "./annotations/logic";
+import { downloadText } from "./backup/download";
+import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary } from "./backup/logic";
 import type { Annotation, HighlightColor } from "./annotations/types";
 import { useAnnotations } from "./annotations/useAnnotations";
-import { annotationRepo, repo } from "./library/repo";
+import { annotationRepo, repo, statsRepo } from "./library/repo";
 import type { Book } from "./library/types";
 import { useLibrary } from "./library/useLibrary";
 import {
@@ -14,13 +16,18 @@ import {
   type SelectionInfo,
 } from "./reader/ReaderView";
 import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
+import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchState } from "./search/logic";
+import type { ReadingRow } from "./stats/logic";
+import { useReadingTimer } from "./stats/useReadingTimer";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, themes } from "./themes/themes";
 import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
 import { NotesPanel } from "./ui/NotesPanel";
+import { SearchPanel } from "./ui/SearchPanel";
 import { SettingsPanel } from "./ui/SettingsPanel";
+import { StatsPanel } from "./ui/StatsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
 
@@ -49,10 +56,15 @@ export default function App() {
   const [info, setInfo] = useState<BookInfo | null>(null);
   const [progress, setProgress] = useState<RelocateDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes">("none");
+  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes" | "search" | "stats">("none");
+  const [statsRows, setStatsRows] = useState<ReadingRow[]>([]);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [active, setActive] = useState<{ id: string; rect: ScreenRect } | null>(null);
+  const [search, setSearch] = useState<SearchState>(idleSearch);
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
+  const searchToken = useRef(0);
   const ann = useAnnotations(view.kind === "reader" ? view.book.id : null, annotationRepo);
+  const timer = useReadingTimer(view.kind === "reader" ? view.book.id : null, statsRepo);
   const apiRef = useRef<ReaderApi | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pending = useRef<PendingSave | null>(null);
@@ -145,6 +157,7 @@ export default function App() {
     setPanel("none");
     setSelection(null);
     setActive(null);
+    setSearch(idleSearch);
     setView({ kind: "reader", book, file, startCfi: book.cfi });
     void patch(book.id, { lastOpenedAt: Date.now() });
   };
@@ -155,6 +168,7 @@ export default function App() {
     setError(null);
     setSelection(null);
     setActive(null);
+    setSearch(idleSearch);
     setView({ kind: "library" });
   };
 
@@ -213,11 +227,119 @@ export default function App() {
     }
   }, [panel]);
 
+  // ---- in-book search ----
+  const runSearch = async (query: string, opts: { matchCase: boolean; matchWholeWords: boolean }) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const token = ++searchToken.current;
+    let st = startSearch(query);
+    setSearch(st);
+    try {
+      for await (const ev of api.search({ query: st.query, ...opts })) {
+        if (token !== searchToken.current) return; // a newer search replaced this one
+        st = applySearchEvent(st, ev);
+        setSearch(st);
+        if (st.truncated) {
+          setSearch({ ...st, status: "done" });
+          return;
+        }
+      }
+    } catch {
+      if (token === searchToken.current) setSearch({ ...st, status: "done" });
+    }
+  };
+
+  const clearSearch = useCallback(() => {
+    searchToken.current++;
+    apiRef.current?.clearSearch();
+    setSearch(idleSearch);
+  }, []);
+
+  const goToHit = (hit: SearchHit) => {
+    apiRef.current?.goTo(hit.cfi);
+    // On narrow screens the panel would hide the match, so close it (matches stay outlined).
+    if (window.innerWidth < 760) setPanel("none");
+  };
+
+  // Ctrl/Cmd+F opens in-book search while reading (the book iframe forwards its own via ReaderView).
+  useEffect(() => {
+    if (view.kind !== "reader") return;
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setPanel("search");
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [view.kind]);
+
+  // ---- backup / restore of notes and reading positions ----
+  const exportData = async () => {
+    try {
+      const lists = await Promise.all(lib.books.map((b) => annotationRepo.list(b.id)));
+      const backup = buildBackup(lib.books, lists.flat());
+      downloadText(backupFilename(), JSON.stringify(backup, null, 2));
+      const notes = lists.flat().length;
+      setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}. Look for ${backupFilename()} in your Downloads folder.`);
+    } catch (e) {
+      setDataMessage(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const restoreData = async (file: File) => {
+    try {
+      const parsed = parseBackup(await file.text());
+      if (!parsed.ok) {
+        setDataMessage(parsed.error);
+        return;
+      }
+      const existing = new Map(
+        await Promise.all(parsed.backup.books.map(async (b) => [b.id, await annotationRepo.list(b.id)] as const)),
+      );
+      const plan = planRestore(parsed.backup, lib.books, existing);
+      for (const a of plan.annotationsToPut) await annotationRepo.put(a);
+      for (const u of plan.progressUpdates) {
+        await lib.patch(u.id, { progress: u.progress, cfi: u.cfi, lastOpenedAt: u.lastOpenedAt });
+      }
+      ann.reload();
+      setDataMessage(restoreSummary(plan.summary, parsed.skipped));
+    } catch (e) {
+      setDataMessage(`Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
     const list = Array.from(files ?? []);
     if (list.length) void lib.importFiles(list);
   };
+
+  // Re-read reading time each time the stats panel opens.
+  useEffect(() => {
+    if (panel !== "stats") return;
+    let cancelled = false;
+    statsRepo.list().then((rows) => !cancelled && setStatsRows(rows)).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [panel]);
+
+  const statsToggle = (
+    <div className="popover-anchor">
+      <button
+        className="btn icon"
+        aria-label="Reading statistics"
+        aria-pressed={panel === "stats"}
+        onClick={() => setPanel(panel === "stats" ? "none" : "stats")}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M5 20V11M12 20V5M19 20v-6" />
+        </svg>
+      </button>
+      {panel === "stats" ? <StatsPanel rows={statsRows} books={lib.books} /> : null}
+    </div>
+  );
 
   // The panel is anchored to its own toggle so it never covers the button, whatever the theme layout.
   const settingsToggle = (
@@ -230,7 +352,7 @@ export default function App() {
       >
         Aa
       </button>
-      {panel === "settings" ? <SettingsPanel /> : null}
+      {panel === "settings" ? <SettingsPanel data={{ onExport: () => void exportData(), onRestore: (f) => void restoreData(f), message: dataMessage }} /> : null}
     </div>
   );
 
@@ -275,7 +397,12 @@ export default function App() {
               void lib.remove(id);
             }}
             onPickFiles={pickFiles}
-            headerExtra={settingsToggle}
+            headerExtra={
+              <>
+                {statsToggle}
+                {settingsToggle}
+              </>
+            }
           />
         </main>
       ) : (
@@ -301,6 +428,18 @@ export default function App() {
                 onClick={() => setPanel(panel === "toc" ? "none" : "toc")}
               >
                 ☰
+              </button>
+              <button
+                className="btn icon"
+                aria-label="Search in book"
+                aria-pressed={panel === "search"}
+                disabled={!info}
+                onClick={() => setPanel(panel === "search" ? "none" : "search")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
               </button>
               <button
                 className="btn icon bm"
@@ -341,6 +480,8 @@ export default function App() {
               onError={(e) => setError(e instanceof Error ? e.message : String(e))}
               onZoomAction={doZoom}
               onPinch={onPinch}
+              onFind={() => setPanel("search")}
+              onActivity={timer.touch}
               onSelection={(s) => {
                 setSelection(s);
                 setActive(null);
@@ -379,6 +520,10 @@ export default function App() {
                 }}
                 onClose={dismissPopover}
               />
+            ) : null}
+
+            {panel === "search" ? (
+              <SearchPanel state={search} onSearch={(q, o) => void runSearch(q, o)} onGo={goToHit} onClear={clearSearch} />
             ) : null}
 
             {panel === "notes" ? (
