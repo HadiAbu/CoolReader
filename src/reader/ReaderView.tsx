@@ -6,6 +6,7 @@ import type { Annotation } from "../annotations/types";
 import { lang } from "../library/meta";
 import type { SearchEvent } from "../search/logic";
 import { keyAction, type KeyAction } from "./keys";
+import { installBookSafety } from "./sanitize";
 import { zoomActionForEvent, type ReaderLayout, type ZoomAction } from "./zoom";
 
 export interface RelocateDetail {
@@ -63,6 +64,8 @@ interface FoliateView extends HTMLElement {
   book: {
     metadata?: { title?: unknown; author?: unknown };
     toc?: BookInfo["toc"];
+    /** foliate's hook for transforming content before it becomes a blob URL (EPUB and MOBI). */
+    transformTarget?: EventTarget;
   };
   renderer: HTMLElement & {
     setStyles?: (css: string) => void;
@@ -295,6 +298,8 @@ export function ReaderView({
       try {
         await view.open(file);
         if (cancelled) return;
+        // Neutralise scripted content before the first section loads (the CSP is then a second layer, not the only one).
+        installBookSafety(view.book.transformTarget);
         applyLayout(view, latest.current.layout);
         view.renderer.setStyles?.(latest.current.css);
         const { title, author } = view.book.metadata ?? {};
