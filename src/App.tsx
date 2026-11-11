@@ -399,7 +399,7 @@ export default function App() {
     <div className="popover-anchor">
       <button
         className="btn icon aa"
-        aria-label="Text settings"
+        aria-label="Display settings"
         aria-pressed={panel === "settings"}
         onClick={() => setPanel(panel === "settings" ? "none" : "settings")}
       >
@@ -419,11 +419,22 @@ export default function App() {
         importFiles(e.dataTransfer.files);
       }}
     >
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <input
         ref={inputRef}
         type="file"
         multiple
         accept=".epub,.mobi,.azw3,.fb2,.cbz,application/epub+zip"
+        aria-label="Add books"
         hidden
         onChange={(e) => {
           importFiles(e.target.files);
@@ -432,7 +443,7 @@ export default function App() {
       />
 
       {view.kind === "library" ? (
-        <main className="stage lib-stage">
+        <main id="main" tabIndex={-1} className="stage lib-stage">
           <Library
             repo={repo}
             theme={theme}
@@ -462,7 +473,7 @@ export default function App() {
         <>
           <header className="bar">
             <button className="btn" onClick={backToLibrary} aria-label="Back to library">‹ Library</button>
-            <div className="title">
+            <h1 className="title">
               {info ? (
                 <>
                   <strong>{info.title}</strong>
@@ -471,7 +482,7 @@ export default function App() {
               ) : (
                 <strong>{view.book.title}</strong>
               )}
-            </div>
+            </h1>
             <div className="actions">
               <button
                 className="btn icon"
@@ -496,7 +507,7 @@ export default function App() {
               </button>
               <button
                 className="btn icon bm"
-                aria-label={bookmarksHere.length ? "Remove bookmark" : "Add bookmark"}
+                aria-label="Bookmark this page"
                 aria-pressed={bookmarksHere.length > 0}
                 disabled={!progress?.cfi}
                 onClick={() => void toggleBookmark()}
@@ -519,7 +530,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="stage">
+          <main id="main" tabIndex={-1} className="stage">
             <ReaderView
               key={view.book.id}
               file={view.file}
@@ -594,7 +605,7 @@ export default function App() {
 
             {panel === "toc" && info ? (
               <aside className="drawer" aria-label="Contents">
-                <h3>Contents</h3>
+                <h2>Contents</h2>
                 <Toc
                   items={info.toc}
                   activeHref={progress?.tocItem?.href}

@@ -118,7 +118,7 @@ export function Library({ repo, theme, books, loading, importing, notice, onDism
 
   return (
     <div className={`library nav-${theme.nav}`}>
-      <aside className="lib-nav">
+      <aside className="lib-nav" aria-label="Library menu">
         <div className="brand">Folio</div>
         <nav aria-label="Library sections">
           {FILTERS.map((f) => (

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AA_TEXT, AA_UI, contrastRatio } from "./contrast";
 import { applyTheme, readerCss, resolveSurface, themeList, themes } from "./themes";
 
 describe("resolveSurface", () => {
@@ -19,6 +20,34 @@ describe("resolveSurface", () => {
     // Midnight defaults to dark, so a light OS must not leave it dark
     expect(resolveSurface("system", themes.midnight, false)).toBe("light");
   });
+});
+
+describe("accessible contrast (WCAG AA)", () => {
+  // Every colour pairing the UI renders, on every theme and surface.
+  for (const t of themeList) {
+    for (const surface of ["light", "sepia", "dark"] as const) {
+      const s = t.surfaces[surface];
+      const accent = s.accent ?? t.accent;
+      const accentFg = s.accentFg ?? t.accentFg;
+      const text: [string, string, string][] = [
+        ["text on page", s.fg, s.bg],
+        ["muted text on page", s.muted, s.bg],
+        ["text on panel", s.fg, s.panel],
+        ["muted text on panel", s.muted, s.panel],
+        ["link on page", s.link, s.bg],
+        ["button label on accent", accentFg, accent],
+      ];
+      for (const [label, fg, bg] of text) {
+        it(`${t.id}/${surface}: ${label} >= 4.5:1`, () => {
+          expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(AA_TEXT);
+        });
+      }
+      it(`${t.id}/${surface}: accent is visible as a UI colour (>= 3:1)`, () => {
+        expect(contrastRatio(accent, s.bg)).toBeGreaterThanOrEqual(AA_UI);
+        expect(contrastRatio(accent, s.panel)).toBeGreaterThanOrEqual(AA_UI);
+      });
+    }
+  }
 });
 
 describe("theme data", () => {
