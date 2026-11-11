@@ -58,7 +58,7 @@ export function SettingsPanel() {
           <span className="value" aria-live="polite">{s.zoom}%</span>
         </div>
         <div className="zoomrow">
-          <button className="icon" aria-label="Smaller text" onClick={s.zoomOut}>
+          <button className="btn icon" aria-label="Smaller text" onClick={s.zoomOut}>
             <span style={{ fontSize: "0.9rem" }}>A</span>
           </button>
           <input
@@ -70,7 +70,7 @@ export function SettingsPanel() {
             value={s.zoom}
             onChange={(e) => s.setZoom(Number(e.target.value))}
           />
-          <button className="icon" aria-label="Larger text" onClick={s.zoomIn}>
+          <button className="btn icon" aria-label="Larger text" onClick={s.zoomIn}>
             <span style={{ fontSize: "1.5rem" }}>A</span>
           </button>
         </div>
