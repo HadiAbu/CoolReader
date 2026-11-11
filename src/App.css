@@ -106,13 +106,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 input[type="range"] { accent-color: var(--accent); }
 
 /* Settings popover */
+.popover-anchor { position: relative; z-index: 20; }
 .panel {
   position: absolute;
-  top: 0.25rem;
-  right: 1rem;
-  z-index: 10;
-  width: min(22rem, calc(100% - 2rem));
-  max-height: calc(100% - 1rem);
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 20;
+  width: min(22rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 6.5rem);
   overflow: auto;
   padding: 1rem 1.1rem;
   border-radius: calc(var(--radius) + 4px);

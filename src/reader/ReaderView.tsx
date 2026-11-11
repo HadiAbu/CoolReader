@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import "../../vendor/foliate-js/view.js";
+import { lang } from "../library/meta";
 import { zoomActionForEvent, type ReaderLayout, type ZoomAction } from "./zoom";
 
 export interface RelocateDetail {
@@ -50,19 +51,6 @@ interface Props {
   onZoomAction?: (a: ZoomAction) => void;
   apiRef?: { current: ReaderApi | null };
 }
-
-const lang = (v: unknown): string => {
-  if (!v) return "";
-  if (typeof v === "string") return v;
-  if (Array.isArray(v)) return v.map(lang).filter(Boolean).join(", ");
-  if (typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    if ("name" in o) return lang(o.name);
-    const first = Object.values(o)[0];
-    return lang(first);
-  }
-  return "";
-};
 
 const applyLayout = (view: FoliateView, l: ReaderLayout) => {
   const r = view.renderer;
