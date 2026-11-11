@@ -4,6 +4,7 @@ import { Overlayer } from "../../vendor/foliate-js/overlayer.js";
 import { HIGHLIGHT_COLORS } from "../annotations/logic";
 import type { Annotation } from "../annotations/types";
 import { lang } from "../library/meta";
+import type { SearchEvent } from "../search/logic";
 import { zoomActionForEvent, type ReaderLayout, type ZoomAction } from "./zoom";
 
 export interface RelocateDetail {
@@ -53,6 +54,8 @@ interface FoliateView extends HTMLElement {
   resolveCFI(cfi: string): { index: number };
   addAnnotation(a: FoliateAnnotation, remove?: boolean): Promise<unknown>;
   deleteAnnotation(a: FoliateAnnotation): Promise<unknown>;
+  search(opts: Record<string, unknown>): AsyncGenerator<SearchEvent>;
+  clearSearch(): void;
   lastLocation?: { cfi?: string } | null;
   book: {
     metadata?: { title?: unknown; author?: unknown };
@@ -70,6 +73,9 @@ export interface ReaderApi {
   next: () => void;
   prev: () => void;
   clearSelection: () => void;
+  /** Streams results and paints matches on the page; start a new search to cancel the old one. */
+  search: (opts: { query: string; matchCase?: boolean; matchWholeWords?: boolean }) => AsyncIterable<SearchEvent>;
+  clearSearch: () => void;
 }
 
 interface Props {
@@ -83,6 +89,8 @@ interface Props {
   onError?: (e: unknown) => void;
   onZoomAction?: (a: ZoomAction) => void;
   onSelection?: (s: SelectionInfo | null) => void;
+  /** Ctrl/Cmd+F pressed while the book has focus. */
+  onFind?: () => void;
   /** Two-finger pinch on the book text. ratio = currentDistance / startDistance. */
   onPinch?: (p: { phase: "start" | "move" | "end"; ratio: number }) => void;
   onAnnotationClick?: (info: { id: string; rect: ScreenRect }) => void;
@@ -126,6 +134,7 @@ export function ReaderView({
   onError,
   onZoomAction,
   onSelection,
+  onFind,
   onPinch,
   onAnnotationClick,
   apiRef,
@@ -135,8 +144,8 @@ export function ReaderView({
   const drawnRef = useRef(new Map<string, Annotation>());
 
   // Latest props, readable from long-lived listeners without re-running the open effect.
-  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onPinch, onAnnotationClick });
-  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onPinch, onAnnotationClick };
+  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onPinch, onAnnotationClick });
+  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onPinch, onAnnotationClick };
 
   // Open a book.
   useEffect(() => {
@@ -160,6 +169,11 @@ export function ReaderView({
         return;
       }
       if (e.type !== "keydown") return;
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "f") {
+        e.preventDefault();
+        latest.current.onFind?.();
+        return;
+      }
       if (ev.key === "ArrowLeft" || ev.key === "PageUp") view.goLeft();
       else if (ev.key === "ArrowRight" || ev.key === "PageDown" || ev.key === " ") view.goRight();
     };
@@ -264,6 +278,14 @@ export function ReaderView({
         goToFraction: (f) => void view.goToFraction(f).catch(() => {}),
         next: () => void view.goRight().catch(() => {}),
         prev: () => void view.goLeft().catch(() => {}),
+        search: (o) => view.search({ ...o, draw: Overlayer.outline, drawOptions: { color: "#e8590c" } }),
+        clearSearch: () => {
+          try {
+            view.clearSearch();
+          } catch {
+            /* nothing to clear */
+          }
+        },
         clearSelection: () => {
           try {
             for (const { doc } of view.renderer.getContents()) doc.getSelection()?.removeAllRanges();

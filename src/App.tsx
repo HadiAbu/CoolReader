@@ -14,12 +14,14 @@ import {
   type SelectionInfo,
 } from "./reader/ReaderView";
 import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
+import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchState } from "./search/logic";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, themes } from "./themes/themes";
 import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
 import { NotesPanel } from "./ui/NotesPanel";
+import { SearchPanel } from "./ui/SearchPanel";
 import { SettingsPanel } from "./ui/SettingsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
@@ -49,9 +51,11 @@ export default function App() {
   const [info, setInfo] = useState<BookInfo | null>(null);
   const [progress, setProgress] = useState<RelocateDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes">("none");
+  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes" | "search">("none");
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [active, setActive] = useState<{ id: string; rect: ScreenRect } | null>(null);
+  const [search, setSearch] = useState<SearchState>(idleSearch);
+  const searchToken = useRef(0);
   const ann = useAnnotations(view.kind === "reader" ? view.book.id : null, annotationRepo);
   const apiRef = useRef<ReaderApi | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +149,7 @@ export default function App() {
     setPanel("none");
     setSelection(null);
     setActive(null);
+    setSearch(idleSearch);
     setView({ kind: "reader", book, file, startCfi: book.cfi });
     void patch(book.id, { lastOpenedAt: Date.now() });
   };
@@ -155,6 +160,7 @@ export default function App() {
     setError(null);
     setSelection(null);
     setActive(null);
+    setSearch(idleSearch);
     setView({ kind: "library" });
   };
 
@@ -212,6 +218,53 @@ export default function App() {
       setActive(null);
     }
   }, [panel]);
+
+  // ---- in-book search ----
+  const runSearch = async (query: string, opts: { matchCase: boolean; matchWholeWords: boolean }) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const token = ++searchToken.current;
+    let st = startSearch(query);
+    setSearch(st);
+    try {
+      for await (const ev of api.search({ query: st.query, ...opts })) {
+        if (token !== searchToken.current) return; // a newer search replaced this one
+        st = applySearchEvent(st, ev);
+        setSearch(st);
+        if (st.truncated) {
+          setSearch({ ...st, status: "done" });
+          return;
+        }
+      }
+    } catch {
+      if (token === searchToken.current) setSearch({ ...st, status: "done" });
+    }
+  };
+
+  const clearSearch = useCallback(() => {
+    searchToken.current++;
+    apiRef.current?.clearSearch();
+    setSearch(idleSearch);
+  }, []);
+
+  const goToHit = (hit: SearchHit) => {
+    apiRef.current?.goTo(hit.cfi);
+    // On narrow screens the panel would hide the match, so close it (matches stay outlined).
+    if (window.innerWidth < 760) setPanel("none");
+  };
+
+  // Ctrl/Cmd+F opens in-book search while reading (the book iframe forwards its own via ReaderView).
+  useEffect(() => {
+    if (view.kind !== "reader") return;
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setPanel("search");
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [view.kind]);
 
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
@@ -303,6 +356,18 @@ export default function App() {
                 ☰
               </button>
               <button
+                className="btn icon"
+                aria-label="Search in book"
+                aria-pressed={panel === "search"}
+                disabled={!info}
+                onClick={() => setPanel(panel === "search" ? "none" : "search")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+              </button>
+              <button
                 className="btn icon bm"
                 aria-label={bookmarksHere.length ? "Remove bookmark" : "Add bookmark"}
                 aria-pressed={bookmarksHere.length > 0}
@@ -341,6 +406,7 @@ export default function App() {
               onError={(e) => setError(e instanceof Error ? e.message : String(e))}
               onZoomAction={doZoom}
               onPinch={onPinch}
+              onFind={() => setPanel("search")}
               onSelection={(s) => {
                 setSelection(s);
                 setActive(null);
@@ -379,6 +445,10 @@ export default function App() {
                 }}
                 onClose={dismissPopover}
               />
+            ) : null}
+
+            {panel === "search" ? (
+              <SearchPanel state={search} onSearch={(q, o) => void runSearch(q, o)} onGo={goToHit} onClear={clearSearch} />
             ) : null}
 
             {panel === "notes" ? (

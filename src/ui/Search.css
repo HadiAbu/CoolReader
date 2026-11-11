@@ -1,0 +1,11 @@
+.drawer.find { width: min(26rem, 92%); display: flex; flex-direction: column; gap: 0.6rem; }
+.search-form { display: flex; gap: 0.5rem; }
+.search-form input[type="search"] {
+  flex: 1; min-width: 0; height: 2.75rem; padding: 0 0.8rem; border-radius: calc(var(--radius) - 2px);
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg); font: 0.9rem var(--font-ui);
+}
+.search-go { padding: 0 1rem; }
+.search-opts { display: flex; gap: 1rem; flex-wrap: wrap; }
+.search-status { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+.search-hit { font-family: var(--font-reader, Georgia, serif); }
+.search-hit mark { background: color-mix(in srgb, #e8590c 28%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; font-weight: 600; }
