@@ -47,9 +47,9 @@ export const themes: Record<ThemeId, Theme> = {
     id: "paper",
     name: "Paper",
     nav: "sidebar",
-    fontUi: "Inter, system-ui, sans-serif",
-    fontReader: "Newsreader, Georgia, serif",
-    fontDisplay: "Fraunces, Georgia, serif",
+    fontUi: "'Inter Variable', system-ui, sans-serif",
+    fontReader: "'Newsreader Variable', Georgia, serif",
+    fontDisplay: "'Fraunces Variable', Georgia, serif",
     accent: "#B5532E",
     accentFg: "#FFFFFF",
     radius: 14,
@@ -65,9 +65,9 @@ export const themes: Record<ThemeId, Theme> = {
     id: "midnight",
     name: "Midnight",
     nav: "rail",
-    fontUi: "Manrope, system-ui, sans-serif",
-    fontReader: "Literata, Georgia, serif",
-    fontDisplay: "Manrope, system-ui, sans-serif",
+    fontUi: "'Manrope Variable', system-ui, sans-serif",
+    fontReader: "'Literata Variable', Georgia, serif",
+    fontDisplay: "'Manrope Variable', system-ui, sans-serif",
     accent: "#8B7CFF",
     accentFg: "#FFFFFF",
     radius: 16,
@@ -84,9 +84,9 @@ export const themes: Record<ThemeId, Theme> = {
     id: "quiet",
     name: "Quiet",
     nav: "topbar",
-    fontUi: "Inter, system-ui, sans-serif",
-    fontReader: "'Source Serif 4', Georgia, serif",
-    fontDisplay: "Inter, system-ui, sans-serif",
+    fontUi: "'Inter Variable', system-ui, sans-serif",
+    fontReader: "'Source Serif 4 Variable', Georgia, serif",
+    fontDisplay: "'Inter Variable', system-ui, sans-serif",
     accent: "#1D6FF2",
     accentFg: "#FFFFFF",
     radius: 10,
@@ -134,6 +134,8 @@ export interface ReaderCssInput {
   lineHeight: number;
   justify: boolean;
   hyphenate: boolean;
+  /** @font-face rules for the theme's reader font (the book iframe cannot see the app's fonts). */
+  fontFaces?: string;
 }
 
 /**
@@ -141,10 +143,11 @@ export interface ReaderCssInput {
  * Font size is forced with !important because many EPUBs hard-code sizes;
  * without it zoom would only affect some books.
  */
-export const readerCss = ({ theme, surface, fontPx, lineHeight, justify, hyphenate }: ReaderCssInput): string => {
+export const readerCss = ({ theme, surface, fontPx, lineHeight, justify, hyphenate, fontFaces = "" }: ReaderCssInput): string => {
   const s = theme.surfaces[surface];
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
+    ${fontFaces}
     html {
       color-scheme: ${surface === "dark" ? "dark" : "light"};
       background: ${s.bg} !important;

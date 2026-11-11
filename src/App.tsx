@@ -15,6 +15,7 @@ import {
 } from "./reader/ReaderView";
 import { computeLayout, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { useSettings } from "./state/settings";
+import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, themes } from "./themes/themes";
 import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
@@ -67,9 +68,10 @@ export default function App() {
     () => computeLayout({ viewportWidth, zoom, mode: layoutMode, charsPerLine }),
     [viewportWidth, zoom, layoutMode, charsPerLine],
   );
+  const fontFaces = useMemo(() => fontFaceCss([READER_FONT[themeId]]), [themeId]);
   const css = useMemo(
-    () => readerCss({ theme, surface, fontPx: layout.fontPx, lineHeight, justify, hyphenate }),
-    [theme, surface, layout.fontPx, lineHeight, justify, hyphenate],
+    () => readerCss({ theme, surface, fontPx: layout.fontPx, lineHeight, justify, hyphenate, fontFaces }),
+    [theme, surface, layout.fontPx, lineHeight, justify, hyphenate, fontFaces],
   );
 
   const doZoom = useCallback((a: ZoomAction) => {
