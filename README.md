@@ -13,6 +13,7 @@ A beautiful, easy-to-use EPUB reader for desktop, with Android planned. Built wi
 - **Highlights, notes and bookmarks.** Select text to highlight it in four colours, add a note, and click a highlight to edit or delete it. A notes drawer lists everything in reading order, grouped by chapter, with copy-as-Markdown.
 - **Search inside a book** (`Ctrl/Cmd + F`): results stream in grouped by chapter, matches are outlined on the page, and a click jumps to them. Options for match case and whole words.
 - **Backup and restore** of your notes, highlights, bookmarks and reading positions to a single JSON file. Restoring merges safely (never deletes), and notes for a book you haven't re-imported yet reattach when you add that same file.
+- **Reading statistics:** time read today and over the last 7 days, a day streak, books finished, a small chart and your most-read books. Time only counts while you are actually reading (the window is visible and there was recent input), so a book left open overnight adds nothing.
 - **Offline by design.** Fonts are bundled, nothing is fetched from the internet, and your books and notes stay on your device.
 - **Formats:** EPUB (primary), plus MOBI, AZW3, FB2 and CBZ through foliate-js.
 - Settings are remembered separately for phone, tablet and desktop-sized windows.
@@ -57,7 +58,7 @@ The book is rendered by foliate-js inside iframes; `src/reader/ReaderView.tsx` i
 - [x] Themes, zoom and adaptive layout, library, highlights / notes / bookmarks, bundled fonts, pinch-to-zoom
 - [x] In-book search
 - [x] Backup and restore of notes and reading positions
-- [ ] Reading statistics
+- [x] Reading statistics
 - [ ] Android build
 - [ ] Optional SQLite and file storage, sync
 

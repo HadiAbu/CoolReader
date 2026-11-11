@@ -91,6 +91,8 @@ interface Props {
   onSelection?: (s: SelectionInfo | null) => void;
   /** Ctrl/Cmd+F pressed while the book has focus. */
   onFind?: () => void;
+  /** Any input inside the book (keys, taps, wheel) or a page change; used to time reading. */
+  onActivity?: () => void;
   /** Two-finger pinch on the book text. ratio = currentDistance / startDistance. */
   onPinch?: (p: { phase: "start" | "move" | "end"; ratio: number }) => void;
   onAnnotationClick?: (info: { id: string; rect: ScreenRect }) => void;
@@ -135,6 +137,7 @@ export function ReaderView({
   onZoomAction,
   onSelection,
   onFind,
+  onActivity,
   onPinch,
   onAnnotationClick,
   apiRef,
@@ -144,8 +147,8 @@ export function ReaderView({
   const drawnRef = useRef(new Map<string, Annotation>());
 
   // Latest props, readable from long-lived listeners without re-running the open effect.
-  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onPinch, onAnnotationClick });
-  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onPinch, onAnnotationClick };
+  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onActivity, onPinch, onAnnotationClick });
+  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onActivity, onPinch, onAnnotationClick };
 
   // Open a book.
   useEffect(() => {
@@ -184,6 +187,9 @@ export function ReaderView({
       if (!doc) return;
       doc.addEventListener("keydown", handleDocEvent);
       doc.addEventListener("wheel", handleDocEvent, { passive: false });
+      for (const type of ["keydown", "pointerdown", "touchstart", "wheel"]) {
+        doc.addEventListener(type, () => latest.current.onActivity?.(), { passive: true });
+      }
 
       const checkSelection = () => {
         const sel = doc.getSelection();
@@ -225,7 +231,10 @@ export function ReaderView({
       });
     };
 
-    const onRel = (e: Event) => latest.current.onRelocate?.((e as CustomEvent<RelocateDetail>).detail);
+    const onRel = (e: Event) => {
+      latest.current.onActivity?.();
+      latest.current.onRelocate?.((e as CustomEvent<RelocateDetail>).detail);
+    };
 
     // Draw saved highlights whenever a section's overlay is (re)created.
     const onCreateOverlay = (e: Event) => {

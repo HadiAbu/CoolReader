@@ -44,6 +44,8 @@ There is no linter or formatter configured. `pnpm build` must stay clean (`noUnu
 
 **Backup** (`backup/logic.ts`) exports progress + annotations (not book files) as versioned JSON. `parseBackup` validates and drops bad entries, forcing each annotation's `bookId` to its enclosing book; `planRestore` only adds or replaces-if-newer and never deletes. Annotations are keyed by file hash, so notes for a not-yet-imported book attach when that file is imported later.
 
+**Reading stats** (`stats/`): `useReadingTimer` ticks every 5 s and only counts while the window is visible and there was input within 90 s (activity comes from the window plus listeners `ReaderView` attaches inside the book iframes via `onActivity`). It flushes every 30 s and on hide/unmount into per-day-per-book rows (`reading` store, key `day|bookId`; days are local time). Aggregation, streaks and formatting are pure and tested in `stats/logic.ts`. Stats are not part of the backup file yet. IndexedDB is at schema version 3; every `onupgradeneeded` step is guarded and connections close on `versionchange`.
+
 **Highlights.** Stored as range CFIs. `ReaderView` draws them through foliate's overlayer in two places that must agree: the `create-overlay` event (section loaded; this is the only path after a reload) and a diff effect (add, recolour, delete). Both record into the same `drawn` map; if a path forgets to, deletes leave ghost highlights on the page.
 
 ## Gotchas

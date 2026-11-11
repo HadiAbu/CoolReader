@@ -4,7 +4,7 @@ import { downloadText } from "./backup/download";
 import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary } from "./backup/logic";
 import type { Annotation, HighlightColor } from "./annotations/types";
 import { useAnnotations } from "./annotations/useAnnotations";
-import { annotationRepo, repo } from "./library/repo";
+import { annotationRepo, repo, statsRepo } from "./library/repo";
 import type { Book } from "./library/types";
 import { useLibrary } from "./library/useLibrary";
 import {
@@ -17,6 +17,8 @@ import {
 } from "./reader/ReaderView";
 import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchState } from "./search/logic";
+import type { ReadingRow } from "./stats/logic";
+import { useReadingTimer } from "./stats/useReadingTimer";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, themes } from "./themes/themes";
@@ -25,6 +27,7 @@ import { Library } from "./ui/Library";
 import { NotesPanel } from "./ui/NotesPanel";
 import { SearchPanel } from "./ui/SearchPanel";
 import { SettingsPanel } from "./ui/SettingsPanel";
+import { StatsPanel } from "./ui/StatsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
 
@@ -53,13 +56,15 @@ export default function App() {
   const [info, setInfo] = useState<BookInfo | null>(null);
   const [progress, setProgress] = useState<RelocateDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes" | "search">("none");
+  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes" | "search" | "stats">("none");
+  const [statsRows, setStatsRows] = useState<ReadingRow[]>([]);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [active, setActive] = useState<{ id: string; rect: ScreenRect } | null>(null);
   const [search, setSearch] = useState<SearchState>(idleSearch);
   const [dataMessage, setDataMessage] = useState<string | null>(null);
   const searchToken = useRef(0);
   const ann = useAnnotations(view.kind === "reader" ? view.book.id : null, annotationRepo);
+  const timer = useReadingTimer(view.kind === "reader" ? view.book.id : null, statsRepo);
   const apiRef = useRef<ReaderApi | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pending = useRef<PendingSave | null>(null);
@@ -310,6 +315,32 @@ export default function App() {
     if (list.length) void lib.importFiles(list);
   };
 
+  // Re-read reading time each time the stats panel opens.
+  useEffect(() => {
+    if (panel !== "stats") return;
+    let cancelled = false;
+    statsRepo.list().then((rows) => !cancelled && setStatsRows(rows)).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [panel]);
+
+  const statsToggle = (
+    <div className="popover-anchor">
+      <button
+        className="btn icon"
+        aria-label="Reading statistics"
+        aria-pressed={panel === "stats"}
+        onClick={() => setPanel(panel === "stats" ? "none" : "stats")}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M5 20V11M12 20V5M19 20v-6" />
+        </svg>
+      </button>
+      {panel === "stats" ? <StatsPanel rows={statsRows} books={lib.books} /> : null}
+    </div>
+  );
+
   // The panel is anchored to its own toggle so it never covers the button, whatever the theme layout.
   const settingsToggle = (
     <div className="popover-anchor">
@@ -366,7 +397,12 @@ export default function App() {
               void lib.remove(id);
             }}
             onPickFiles={pickFiles}
-            headerExtra={settingsToggle}
+            headerExtra={
+              <>
+                {statsToggle}
+                {settingsToggle}
+              </>
+            }
           />
         </main>
       ) : (
@@ -445,6 +481,7 @@ export default function App() {
               onZoomAction={doZoom}
               onPinch={onPinch}
               onFind={() => setPanel("search")}
+              onActivity={timer.touch}
               onSelection={(s) => {
                 setSelection(s);
                 setActive(null);

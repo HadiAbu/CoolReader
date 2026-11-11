@@ -1,11 +1,12 @@
 import type { Annotation, AnnotationRepo } from "../annotations/types";
+import type { ReadingRow, StatsRepo } from "../stats/logic";
 import type { Book, BookRepo } from "./types";
 
 // Browser / dev implementation of the repos, backed by IndexedDB.
 // The Tauri build uses SQLite + files instead (see tauriRepo.ts).
 
 const DB_NAME = "folio";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORES = ["books", "files", "covers"] as const;
 
 const openDb = (): Promise<IDBDatabase> =>
@@ -20,8 +21,17 @@ const openDb = (): Promise<IDBDatabase> =>
       if (!db.objectStoreNames.contains("annotations")) {
         db.createObjectStore("annotations", { keyPath: "id" }).createIndex("bookId", "bookId");
       }
+      if (!db.objectStoreNames.contains("reading")) db.createObjectStore("reading", { keyPath: "key" });
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // If another tab or window upgrades the schema, step aside instead of blocking it forever.
+      db.onversionchange = () => {
+        db.close();
+        sharedDb = null;
+      };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
 
@@ -40,6 +50,23 @@ const done = (tx: IDBTransaction): Promise<void> =>
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
+
+export const createIdbStatsRepo = (): StatsRepo => ({
+  async add(day, bookId, seconds) {
+    const d = await getDb();
+    const tx = d.transaction("reading", "readwrite");
+    const store = tx.objectStore("reading");
+    const key = `${day}|${bookId}`;
+    // Read-modify-write inside one transaction so concurrent flushes cannot lose time.
+    const cur = await wrap<ReadingRow | undefined>(store.get(key));
+    store.put({ key, day, bookId, seconds: (cur?.seconds ?? 0) + seconds } satisfies ReadingRow);
+    await done(tx);
+  },
+  async list() {
+    const d = await getDb();
+    return wrap<ReadingRow[]>(d.transaction("reading").objectStore("reading").getAll());
+  },
+});
 
 export const createIdbAnnotationRepo = (): AnnotationRepo => ({
   async list(bookId) {
