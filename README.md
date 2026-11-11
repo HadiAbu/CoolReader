@@ -12,7 +12,7 @@ A beautiful, easy-to-use EPUB reader for desktop, with Android planned. Built wi
 - **Resume where you left off.** Your position is saved as an EPUB CFI, so it survives zoom, theme and window-size changes.
 - **Highlights, notes and bookmarks.** Select text to highlight it in four colours, add a note, and click a highlight to edit or delete it. A notes drawer lists everything in reading order, grouped by chapter, with copy-as-Markdown.
 - **Search inside a book** (`Ctrl/Cmd + F`): results stream in grouped by chapter, matches are outlined on the page, and a click jumps to them. Options for match case and whole words.
-- **Backup and restore** of your notes, highlights, bookmarks and reading positions to a single JSON file. Restoring merges safely (never deletes), and notes for a book you haven't re-imported yet reattach when you add that same file.
+- **Backup and restore** of your notes, highlights, bookmarks, reading positions and reading history to a single JSON file. Restoring merges safely (never deletes), and notes for a book you haven't re-imported yet reattach when you add that same file.
 - **Reading statistics:** time read today and over the last 7 days, a day streak, books finished, a small chart and your most-read books. Time only counts while you are actually reading (the window is visible and there was recent input), so a book left open overnight adds nothing.
 - **Offline by design.** Fonts are bundled, nothing is fetched from the internet, and your books and notes stay on your device.
 - **Formats:** EPUB (primary), plus MOBI, AZW3, FB2 and CBZ through foliate-js.
@@ -67,5 +67,6 @@ The book is rendered by foliate-js inside iframes; `src/reader/ReaderView.tsx` i
 CoolReader is licensed under the [Apache License 2.0](LICENSE).
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js) by John Factotum (MIT), vendored as a git submodule in `vendor/foliate-js`. It includes [zip.js](https://github.com/gildas-lormeau/zip.js) (BSD-3-Clause), [fflate](https://github.com/101arrowz/fflate) (MIT) and [PDF.js](https://github.com/mozilla/pdf.js) (Apache-2.0).
+- Full license texts for everything bundled are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) (regenerate with `pnpm notices`).
 - Fonts via [Fontsource](https://fontsource.org/), all under the SIL Open Font License: Inter, Manrope, Fraunces, Newsreader, Literata and Source Serif 4.
 - Design inspiration came from existing open-source readers such as Foliate and Readest; no code was copied from them.

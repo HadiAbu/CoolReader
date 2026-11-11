@@ -295,7 +295,7 @@ export default function App() {
   const exportData = async () => {
     try {
       const lists = await Promise.all(lib.books.map((b) => annotationRepo.list(b.id)));
-      const backup = buildBackup(lib.books, lists.flat());
+      const backup = buildBackup(lib.books, lists.flat(), Date.now(), await statsRepo.list());
       downloadText(backupFilename(), JSON.stringify(backup, null, 2));
       const notes = lists.flat().length;
       setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}. Look for ${backupFilename()} in your Downloads folder.`);
@@ -314,8 +314,9 @@ export default function App() {
       const existing = new Map(
         await Promise.all(parsed.backup.books.map(async (b) => [b.id, await annotationRepo.list(b.id)] as const)),
       );
-      const plan = planRestore(parsed.backup, lib.books, existing);
+      const plan = planRestore(parsed.backup, lib.books, existing, await statsRepo.list());
       for (const a of plan.annotationsToPut) await annotationRepo.put(a);
+      for (const r of plan.readingToPut) await statsRepo.put(r);
       for (const u of plan.progressUpdates) {
         await lib.patch(u.id, { progress: u.progress, cfi: u.cfi, lastOpenedAt: u.lastOpenedAt });
       }

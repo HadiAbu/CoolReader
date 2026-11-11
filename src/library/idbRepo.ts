@@ -62,6 +62,12 @@ export const createIdbStatsRepo = (): StatsRepo => ({
     store.put({ key, day, bookId, seconds: (cur?.seconds ?? 0) + seconds } satisfies ReadingRow);
     await done(tx);
   },
+  async put(row) {
+    const d = await getDb();
+    const tx = d.transaction("reading", "readwrite");
+    tx.objectStore("reading").put(row);
+    await done(tx);
+  },
   async list() {
     const d = await getDb();
     return wrap<ReadingRow[]>(d.transaction("reading").objectStore("reading").getAll());

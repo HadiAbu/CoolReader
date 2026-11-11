@@ -5,6 +5,7 @@
 import { COLOR_NAMES } from "../annotations/logic";
 import type { Annotation, AnnotationKind } from "../annotations/types";
 import type { Book } from "../library/types";
+import type { ReadingRow } from "../stats/logic";
 
 export const BACKUP_FORMAT = "folio-backup";
 export const BACKUP_VERSION = 1;
@@ -19,20 +20,30 @@ export interface BackupBook {
   annotations: Annotation[];
 }
 
+export type BackupReading = Pick<ReadingRow, "day" | "bookId" | "seconds">;
+
 export interface BackupFile {
   format: typeof BACKUP_FORMAT;
   version: typeof BACKUP_VERSION;
   exportedAt: number;
   books: BackupBook[];
+  /** Reading time per day per book. Optional: older backups do not have it. */
+  reading?: BackupReading[];
 }
 
-export const buildBackup = (books: Book[], annotations: Annotation[], now = Date.now()): BackupFile => {
+export const buildBackup = (
+  books: Book[],
+  annotations: Annotation[],
+  now = Date.now(),
+  reading: ReadingRow[] = [],
+): BackupFile => {
   const byBook = new Map<string, Annotation[]>();
   for (const a of annotations) byBook.set(a.bookId, [...(byBook.get(a.bookId) ?? []), a]);
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt: now,
+    ...(reading.length ? { reading: reading.map(({ day, bookId, seconds }) => ({ day, bookId, seconds })) } : {}),
     books: books
       // Skip books with nothing worth keeping, so the file stays small and meaningful.
       .filter((b) => b.progress > 0 || b.lastOpenedAt != null || byBook.has(b.id))
@@ -49,6 +60,7 @@ export const buildBackup = (books: Book[], annotations: Annotation[], now = Date
 };
 
 const KINDS: AnnotationKind[] = ["highlight", "bookmark"];
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -87,7 +99,7 @@ export const parseBackup = (text: string): ParseResult => {
   if (!raw || typeof raw !== "object" || (raw as { format?: unknown }).format !== BACKUP_FORMAT) {
     return { ok: false, error: "This is not a Folio backup file." };
   }
-  const obj = raw as { version?: unknown; exportedAt?: unknown; books?: unknown };
+  const obj = raw as { version?: unknown; exportedAt?: unknown; books?: unknown; reading?: unknown };
   if (obj.version !== BACKUP_VERSION) {
     return { ok: false, error: "This backup was made by a different version of Folio and cannot be read." };
   }
@@ -121,15 +133,24 @@ export const parseBackup = (text: string): ParseResult => {
       annotations,
     });
   }
+  const reading: BackupReading[] = [];
+  for (const item of Array.isArray(obj.reading) ? obj.reading : []) {
+    const r = item as Record<string, unknown> | null;
+    if (r && isStr(r.day) && DAY_RE.test(r.day) && isStr(r.bookId) && r.bookId && isNum(r.seconds) && r.seconds >= 0) {
+      reading.push({ day: r.day, bookId: r.bookId, seconds: r.seconds });
+    } else skipped++;
+  }
   return {
     ok: true,
     skipped,
-    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: isNum(obj.exportedAt) ? obj.exportedAt : 0, books },
+    backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: isNum(obj.exportedAt) ? obj.exportedAt : 0, books, reading },
   };
 };
 
 export interface RestorePlan {
   annotationsToPut: Annotation[];
+  /** Reading rows where the backup has more time than the app does. */
+  readingToPut: ReadingRow[];
   progressUpdates: { id: string; progress: number; cfi: string | null; lastOpenedAt: number | null }[];
   summary: {
     books: number;
@@ -138,6 +159,7 @@ export interface RestorePlan {
     annotationsAdded: number;
     annotationsUpdated: number;
     progressRestored: number;
+    readingDays: number;
   };
 }
 
@@ -150,12 +172,14 @@ export const planRestore = (
   backup: BackupFile,
   library: Book[],
   existing: Map<string, Annotation[]>,
+  existingReading: ReadingRow[] = [],
 ): RestorePlan => {
   const libById = new Map(library.map((b) => [b.id, b]));
   const plan: RestorePlan = {
     annotationsToPut: [],
+    readingToPut: [],
     progressUpdates: [],
-    summary: { books: backup.books.length, missingBooks: [], annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0 },
+    summary: { books: backup.books.length, missingBooks: [], annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0, readingDays: 0 },
   };
 
   for (const b of backup.books) {
@@ -181,6 +205,15 @@ export const planRestore = (
       plan.summary.progressRestored++;
     }
   }
+  // Reading time: the larger value wins per day and book, so restoring twice never double-counts.
+  const haveSeconds = new Map(existingReading.map((r) => [r.key, r.seconds]));
+  for (const r of backup.reading ?? []) {
+    const key = `${r.day}|${r.bookId}`;
+    if (r.seconds > (haveSeconds.get(key) ?? 0)) {
+      plan.readingToPut.push({ key, day: r.day, bookId: r.bookId, seconds: r.seconds });
+      plan.summary.readingDays++;
+    }
+  }
   return plan;
 };
 
@@ -188,6 +221,7 @@ export const restoreSummary = (s: RestorePlan["summary"], skipped: number): stri
   const parts: string[] = [];
   const notes = s.annotationsAdded + s.annotationsUpdated;
   parts.push(notes ? `Restored ${notes} ${notes === 1 ? "note" : "notes"}` : "No new notes to restore");
+  if (s.readingDays) parts.push(`${s.readingDays} ${s.readingDays === 1 ? "day" : "days"} of reading history`);
   if (s.progressRestored) parts.push(`${s.progressRestored} reading ${s.progressRestored === 1 ? "position" : "positions"}`);
   if (s.missingBooks.length) {
     parts.push(`${s.missingBooks.length} ${s.missingBooks.length === 1 ? "book is" : "books are"} not in your library yet (their notes will appear when you add them)`);
