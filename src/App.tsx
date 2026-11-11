@@ -276,7 +276,7 @@ export default function App() {
       const backup = buildBackup(lib.books, lists.flat());
       downloadText(backupFilename(), JSON.stringify(backup, null, 2));
       const notes = lists.flat().length;
-      setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}.`);
+      setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}. Look for ${backupFilename()} in your Downloads folder.`);
     } catch (e) {
       setDataMessage(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
     }

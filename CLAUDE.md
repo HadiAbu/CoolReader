@@ -17,6 +17,8 @@ pnpm vitest run src/reader/zoom.test.ts            # one file
 pnpm vitest run -t "pinchZoomTarget"               # one test by name
 ```
 
+To drive the real native webview (clicks, JS, assertions) launch it with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" pnpm tauri dev`, then talk Chrome DevTools Protocol to `http://127.0.0.1:9222/json` (Node 22 has a global `WebSocket`; send `Runtime.evaluate`). Only stop the node/epub-reader processes whose command line contains this repo's path.
+
 There is no linter or formatter configured. `pnpm build` must stay clean (`noUnusedLocals`/`noUnusedParameters` are on).
 
 ## Architecture
