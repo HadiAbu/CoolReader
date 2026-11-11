@@ -3,6 +3,7 @@
   "productName": "Folio",
   "version": "0.1.0",
   "identifier": "com.folio.reader",
+  "mainBinaryName": "Folio",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -29,6 +30,7 @@
     "active": true,
     "targets": ["nsis"],
     "category": "Utility",
+    "publisher": "HadiAbu",
     "shortDescription": "A beautiful, easy-to-use EPUB reader",
     "longDescription": "Folio is an EPUB reader with themes, comfortable zoom at any screen size, highlights, notes, bookmarks, in-book search and reading statistics. Your books and notes stay on your device.",
     "copyright": "Copyright (c) 2026 HadiAbu. Licensed under the Apache License 2.0.",
@@ -37,11 +39,11 @@
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     },
     "fileAssociations": [
-      { "ext": ["epub"], "name": "EPUB Book", "description": "EPUB e-book", "mimeType": "application/epub+zip", "role": "Viewer" },
-      { "ext": ["mobi"], "name": "MOBI Book", "description": "Mobipocket e-book", "mimeType": "application/x-mobipocket-ebook", "role": "Viewer" },
-      { "ext": ["azw3"], "name": "AZW3 Book", "description": "Kindle (AZW3) e-book", "mimeType": "application/vnd.amazon.ebook", "role": "Viewer" },
-      { "ext": ["fb2"], "name": "FB2 Book", "description": "FictionBook e-book", "mimeType": "application/x-fictionbook+xml", "role": "Viewer" },
-      { "ext": ["cbz"], "name": "Comic Book Archive", "description": "Comic book archive (CBZ)", "mimeType": "application/vnd.comicbook+zip", "role": "Viewer" }
+      { "ext": ["epub"], "name": "Folio EPUB Book", "description": "EPUB e-book", "mimeType": "application/epub+zip", "role": "Viewer" },
+      { "ext": ["mobi"], "name": "Folio MOBI Book", "description": "Mobipocket e-book", "mimeType": "application/x-mobipocket-ebook", "role": "Viewer" },
+      { "ext": ["azw3"], "name": "Folio AZW3 Book", "description": "Kindle (AZW3) e-book", "mimeType": "application/vnd.amazon.ebook", "role": "Viewer" },
+      { "ext": ["fb2"], "name": "Folio FB2 Book", "description": "FictionBook e-book", "mimeType": "application/x-fictionbook+xml", "role": "Viewer" },
+      { "ext": ["cbz"], "name": "Folio Comic Book Archive", "description": "Comic book archive (CBZ)", "mimeType": "application/vnd.comicbook+zip", "role": "Viewer" }
     ],
     "windows": {
       "nsis": {
