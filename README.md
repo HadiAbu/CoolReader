@@ -11,6 +11,8 @@ A beautiful, easy-to-use EPUB reader for desktop, with Android planned. Built wi
 - **Library** with real cover art, search (press `/`), sorting, a Reading / Unread / Finished filter and a "Continue reading" shelf. Import several books at once from a file picker or by dropping files into the window. Importing the same file twice is detected.
 - **Resume where you left off.** Your position is saved as an EPUB CFI, so it survives zoom, theme and window-size changes.
 - **Highlights, notes and bookmarks.** Select text to highlight it in four colours, add a note, and click a highlight to edit or delete it. A notes drawer lists everything in reading order, grouped by chapter, with copy-as-Markdown.
+- **Search inside a book** (`Ctrl/Cmd + F`): results stream in grouped by chapter, matches are outlined on the page, and a click jumps to them. Options for match case and whole words.
+- **Backup and restore** of your notes, highlights, bookmarks and reading positions to a single JSON file. Restoring merges safely (never deletes), and notes for a book you haven't re-imported yet reattach when you add that same file.
 - **Offline by design.** Fonts are bundled, nothing is fetched from the internet, and your books and notes stay on your device.
 - **Formats:** EPUB (primary), plus MOBI, AZW3, FB2 and CBZ through foliate-js.
 - Settings are remembered separately for phone, tablet and desktop-sized windows.
@@ -53,8 +55,8 @@ The book is rendered by foliate-js inside iframes; `src/reader/ReaderView.tsx` i
 ## Roadmap
 
 - [x] Themes, zoom and adaptive layout, library, highlights / notes / bookmarks, bundled fonts, pinch-to-zoom
-- [ ] In-book search
-- [ ] Backup and export of library and notes
+- [x] In-book search
+- [x] Backup and restore of notes and reading positions
 - [ ] Reading statistics
 - [ ] Android build
 - [ ] Optional SQLite and file storage, sync

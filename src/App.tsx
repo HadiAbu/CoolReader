@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookmarksOnPage, excerpt, newId, startOf } from "./annotations/logic";
+import { downloadText } from "./backup/download";
+import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary } from "./backup/logic";
 import type { Annotation, HighlightColor } from "./annotations/types";
 import { useAnnotations } from "./annotations/useAnnotations";
 import { annotationRepo, repo } from "./library/repo";
@@ -55,6 +57,7 @@ export default function App() {
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [active, setActive] = useState<{ id: string; rect: ScreenRect } | null>(null);
   const [search, setSearch] = useState<SearchState>(idleSearch);
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
   const searchToken = useRef(0);
   const ann = useAnnotations(view.kind === "reader" ? view.book.id : null, annotationRepo);
   const apiRef = useRef<ReaderApi | null>(null);
@@ -266,6 +269,41 @@ export default function App() {
     return () => window.removeEventListener("keydown", on);
   }, [view.kind]);
 
+  // ---- backup / restore of notes and reading positions ----
+  const exportData = async () => {
+    try {
+      const lists = await Promise.all(lib.books.map((b) => annotationRepo.list(b.id)));
+      const backup = buildBackup(lib.books, lists.flat());
+      downloadText(backupFilename(), JSON.stringify(backup, null, 2));
+      const notes = lists.flat().length;
+      setDataMessage(`Exported ${notes} ${notes === 1 ? "note" : "notes"} and positions for ${backup.books.length} ${backup.books.length === 1 ? "book" : "books"}.`);
+    } catch (e) {
+      setDataMessage(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const restoreData = async (file: File) => {
+    try {
+      const parsed = parseBackup(await file.text());
+      if (!parsed.ok) {
+        setDataMessage(parsed.error);
+        return;
+      }
+      const existing = new Map(
+        await Promise.all(parsed.backup.books.map(async (b) => [b.id, await annotationRepo.list(b.id)] as const)),
+      );
+      const plan = planRestore(parsed.backup, lib.books, existing);
+      for (const a of plan.annotationsToPut) await annotationRepo.put(a);
+      for (const u of plan.progressUpdates) {
+        await lib.patch(u.id, { progress: u.progress, cfi: u.cfi, lastOpenedAt: u.lastOpenedAt });
+      }
+      ann.reload();
+      setDataMessage(restoreSummary(plan.summary, parsed.skipped));
+    } catch (e) {
+      setDataMessage(`Restore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
     const list = Array.from(files ?? []);
@@ -283,7 +321,7 @@ export default function App() {
       >
         Aa
       </button>
-      {panel === "settings" ? <SettingsPanel /> : null}
+      {panel === "settings" ? <SettingsPanel data={{ onExport: () => void exportData(), onRestore: (f) => void restoreData(f), message: dataMessage }} /> : null}
     </div>
   );
 

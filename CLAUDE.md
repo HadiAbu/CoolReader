@@ -38,6 +38,10 @@ There is no linter or formatter configured. `pnpm build` must stay clean (`noUnu
 
 **Storage sits behind two interfaces** in `library/types.ts` and `annotations/types.ts` (`BookRepo`, `AnnotationRepo`). `library/repo.ts` picks the backend; today it is IndexedDB (`library/idbRepo.ts`, DB version 2, guarded upgrades) in both the browser and the Tauri webview. A SQLite + files backend is planned but deliberately not built. Books are keyed by the first 16 hex chars of the file's SHA-256, so re-importing is a no-op. `App.tsx` owns the library/reader view state, saves progress debounced at 600 ms, and flushes on "back to library" and `pagehide`.
 
+**Search** streams from foliate's `view.search()` async generator. `search/logic.ts` is a pure reducer (`applySearchEvent`) that folds events into grouped, capped (500 hits) results; `App.tsx` guards against overlapping searches with a token. Foliate paints the match outlines itself; `clearSearch()` removes them. Ctrl/Cmd+F is forwarded from the book iframe like the zoom hotkeys.
+
+**Backup** (`backup/logic.ts`) exports progress + annotations (not book files) as versioned JSON. `parseBackup` validates and drops bad entries, forcing each annotation's `bookId` to its enclosing book; `planRestore` only adds or replaces-if-newer and never deletes. Annotations are keyed by file hash, so notes for a not-yet-imported book attach when that file is imported later.
+
 **Highlights.** Stored as range CFIs. `ReaderView` draws them through foliate's overlayer in two places that must agree: the `create-overlay` event (section loaded; this is the only path after a reload) and a diff effect (add, recolour, delete). Both record into the same `drawn` map; if a path forgets to, deletes leave ghost highlights on the page.
 
 ## Gotchas
@@ -47,6 +51,7 @@ There is no linter or formatter configured. `pnpm build` must stay clean (`noUnu
 - `dragDropEnabled` is `false` in the Tauri window config so HTML5 file drops reach the page.
 - Fonts are latin-subset variable fonts imported with `?url` from `@fontsource-variable/*`. Non-latin books fall back to system fonts.
 - The foliate build warning about `vendor/pdfjs/*` glob is harmless (PDF is not supported yet).
+- CSS is plain global stylesheets (no CSS modules): pick unique class names. A drawer once collapsed because it reused the library's `.search` class.
 - Git on Windows prints "LF will be replaced by CRLF" warnings; ignore them.
 - The Playwright MCP can only upload files from the repo root or its `.playwright-mcp` folder. Do not commit test books or screenshots.
 

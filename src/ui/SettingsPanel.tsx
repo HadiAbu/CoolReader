@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { detectDeviceClass, useSettings } from "../state/settings";
 import { surfaceList, themeList, type Surface } from "../themes/themes";
 import {
@@ -23,8 +24,16 @@ const LAYOUTS: [LayoutMode, string][] = [
   ["scroll", "Scroll"],
 ];
 
-export function SettingsPanel() {
+export interface DataActions {
+  onExport: () => void;
+  onRestore: (file: File) => void;
+  /** Result of the last export or restore, shown under the buttons. */
+  message: string | null;
+}
+
+export function SettingsPanel({ data }: { data?: DataActions }) {
   const s = useSettings();
+  const restoreInput = useRef<HTMLInputElement>(null);
   const device = detectDeviceClass();
   const surfaceValue: Surface | "auto" = s.surface ?? "auto";
 
@@ -119,6 +128,30 @@ export function SettingsPanel() {
         </label>
         <p className="hint">Settings are saved for this screen size ({device}).</p>
       </section>
+
+      {data ? (
+        <section>
+          <h3>Your data</h3>
+          <div className="seg">
+            <button onClick={data.onExport}>Export notes</button>
+            <button onClick={() => restoreInput.current?.click()}>Restore</button>
+          </div>
+          <input
+            ref={restoreInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) data.onRestore(f);
+              e.target.value = "";
+            }}
+          />
+          <p className="hint" role="status" aria-live="polite">
+            {data.message ?? "Saves your notes, highlights, bookmarks and reading positions to a file. Your books are not included."}
+          </p>
+        </section>
+      ) : null}
     </div>
   );
 }

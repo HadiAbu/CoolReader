@@ -9,6 +9,10 @@ export function useAnnotations(bookId: string | null, repo: AnnotationRepo) {
   const ref = useRef<Annotation[]>([]);
   ref.current = items;
 
+  // Bumping this re-reads from storage (used after restoring a backup).
+  const [version, setVersion] = useState(0);
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+
   useEffect(() => {
     if (!bookId) {
       setItems([]);
@@ -22,7 +26,7 @@ export function useAnnotations(bookId: string | null, repo: AnnotationRepo) {
     return () => {
       cancelled = true;
     };
-  }, [bookId, repo]);
+  }, [bookId, repo, version]);
 
   const add = useCallback(
     async (a: Annotation) => {
@@ -51,5 +55,5 @@ export function useAnnotations(bookId: string | null, repo: AnnotationRepo) {
     [repo],
   );
 
-  return { items, add, update, remove };
+  return { items, add, update, remove, reload };
 }
