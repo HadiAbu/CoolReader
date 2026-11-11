@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createSettingsStore, defaultsFor, storageKeyFor } from "./settings";
+import { createSettingsStore, defaultsFor, sanitizePersistedSettings, storageKeyFor } from "./settings";
 
 describe("settings store", () => {
   beforeEach(() => localStorage.clear());
@@ -36,5 +36,46 @@ describe("settings store", () => {
     expect(s.getState().charsPerLine).toBe(45);
     s.getState().setLineHeight(9);
     expect(s.getState().lineHeight).toBe(2.4);
+  });
+});
+
+describe("sanitizePersistedSettings", () => {
+  const base = defaultsFor("desktop");
+
+  it("keeps valid saved values", () => {
+    const saved = { themeId: "midnight", surface: "sepia", zoom: 140, uiScale: 120, layoutMode: "scroll", charsPerLine: 60, lineHeight: 1.8, justify: true, hyphenate: false };
+    expect(sanitizePersistedSettings(saved, base)).toEqual(saved);
+    expect(sanitizePersistedSettings({ surface: null }, base).surface).toBeNull();
+    expect(sanitizePersistedSettings({ surface: "system" }, base).surface).toBe("system");
+  });
+
+  it("repairs unknown ids and wrong types instead of letting them through", () => {
+    const out = sanitizePersistedSettings({ themeId: "nope", surface: "neon", layoutMode: "fold", justify: "yes", hyphenate: 1 }, base);
+    expect(out.themeId).toBe(base.themeId);
+    expect(out.surface).toBe(base.surface);
+    expect(out.layoutMode).toBe(base.layoutMode);
+    expect(out.justify).toBe(base.justify);
+    expect(out.hyphenate).toBe(base.hyphenate);
+  });
+
+  it("clamps numbers and rejects non-numbers, including CSS-injection strings", () => {
+    const out = sanitizePersistedSettings({ zoom: 99999, uiScale: -5, charsPerLine: 3, lineHeight: "1.6;}body{display:none" }, base);
+    expect(out.zoom).toBe(300);
+    expect(out.uiScale).toBe(80);
+    expect(out.charsPerLine).toBe(45);
+    expect(out.lineHeight).toBe(base.lineHeight);
+    expect(sanitizePersistedSettings({ zoom: Number.NaN }, base).zoom).toBe(base.zoom);
+  });
+
+  it("copes with garbage input", () => {
+    for (const bad of [null, undefined, 5, "x", [], true]) expect(sanitizePersistedSettings(bad, base)).toEqual(base);
+  });
+
+  it("a corrupt stored value no longer breaks the store on load", () => {
+    localStorage.setItem(storageKeyFor("desktop"), JSON.stringify({ state: { themeId: "bogus", zoom: "huge", lineHeight: "evil;" }, version: 1 }));
+    const s = createSettingsStore("desktop");
+    expect(s.getState().themeId).toBe(base.themeId);
+    expect(s.getState().zoom).toBe(base.zoom);
+    expect(s.getState().lineHeight).toBe(base.lineHeight);
   });
 });

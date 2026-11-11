@@ -165,6 +165,11 @@ export interface ReaderCssInput {
  */
 export const readerCss = ({ theme, surface, fontPx, lineHeight, justify, hyphenate, fontFaces = "" }: ReaderCssInput): string => {
   const s = theme.surfaces[surface];
+  // These values end up inside a stylesheet injected into every book frame, so never interpolate an unchecked one.
+  const px = Number.isFinite(fontPx) ? Math.min(400, Math.max(8, fontPx)) : 18;
+  const lh = Number.isFinite(lineHeight) ? Math.min(2.4, Math.max(1.2, Number(lineHeight))) : 1.6;
+  justify = justify === true;
+  hyphenate = hyphenate === true;
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
     ${fontFaces}
@@ -172,12 +177,12 @@ export const readerCss = ({ theme, surface, fontPx, lineHeight, justify, hyphena
       color-scheme: ${surface === "dark" ? "dark" : "light"};
       background: ${s.bg} !important;
       color: ${s.fg} !important;
-      font-size: ${fontPx}px !important;
+      font-size: ${px}px !important;
       font-family: ${theme.fontReader} !important;
     }
     body { background: transparent !important; color: inherit !important; font-size: 1rem !important; }
     p, li, blockquote, dd {
-      line-height: ${lineHeight};
+      line-height: ${lh};
       text-align: ${justify ? "justify" : "start"};
       -webkit-hyphens: ${hyphenate ? "auto" : "manual"};
       hyphens: ${hyphenate ? "auto" : "manual"};

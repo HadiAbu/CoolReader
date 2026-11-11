@@ -79,6 +79,10 @@ export const createIdbAnnotationRepo = (): AnnotationRepo => ({
     const d = await getDb();
     return wrap<Annotation[]>(d.transaction("annotations").objectStore("annotations").index("bookId").getAll(bookId));
   },
+  async listAll() {
+    const d = await getDb();
+    return wrap<Annotation[]>(d.transaction("annotations").objectStore("annotations").getAll());
+  },
   async put(annotation) {
     const d = await getDb();
     const tx = d.transaction("annotations", "readwrite");

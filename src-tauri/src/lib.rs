@@ -7,6 +7,7 @@
 
 use std::{
     collections::HashSet,
+    io::Read,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
@@ -18,7 +19,9 @@ use tauri::Emitter;
 /// Extensions the app can read (the same list as the file picker in the UI).
 const BOOK_EXTENSIONS: [&str; 5] = ["epub", "mobi", "azw3", "fb2", "cbz"];
 /// Refuse absurdly large files instead of loading them into memory.
-const MAX_BOOK_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_BOOK_BYTES: u64 = 256 * 1024 * 1024;
+/// A forwarded launch cannot grow the queue or allow-list without bound.
+const MAX_QUEUED_PATHS: usize = 256;
 
 /// Paths the OS handed us. Only these can be read back by the UI.
 #[derive(Default)]
@@ -52,6 +55,13 @@ fn register(opens: &Opens, args: impl Iterator<Item = String>) -> bool {
         }
         // Canonical form: absolute, links resolved, so the allow-list cannot be sidestepped with `..`.
         let Ok(canonical) = path.canonicalize() else { continue };
+        // Check again on the real target: a link named x.epub must not allow-list some other file.
+        if !is_book(&canonical) {
+            continue;
+        }
+        if lock(&opens.pending).len() >= MAX_QUEUED_PATHS || lock(&opens.allowed).len() >= MAX_QUEUED_PATHS * 4 {
+            break;
+        }
         lock(&opens.allowed).insert(canonical.clone());
         lock(&opens.pending).push(canonical.to_string_lossy().into_owned());
         any = true;
@@ -72,11 +82,16 @@ fn read_opened_file(path: String, state: tauri::State<'_, Opens>) -> Result<taur
     if !lock(&state.allowed).contains(&path) {
         return Err("That file was not opened by the user.".into());
     }
-    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
-    if size > MAX_BOOK_BYTES {
+    // Enforce the limit on the handle we actually read from, not on a separate metadata lookup.
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path)
+        .map_err(|e| e.to_string())?
+        .take(MAX_BOOK_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_BOOK_BYTES {
         return Err("That file is too large to open.".into());
     }
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -177,6 +192,42 @@ mod tests {
         let allowed = lock(&opens.allowed);
         assert!(allowed.contains(&book.canonicalize().unwrap()));
         assert!(!allowed.contains(&sneaky));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_link_named_like_a_book_cannot_allow_list_another_file() {
+        let dir = temp_dir("symlink");
+        let target = dir.join("secret.txt");
+        fs::write(&target, b"x").unwrap();
+        let link = dir.join("innocent.epub");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&target, &link).is_ok();
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&target, &link).is_ok();
+        if !made {
+            // Creating symlinks needs a privilege on Windows; nothing to test without one.
+            let _ = fs::remove_dir_all(dir);
+            return;
+        }
+        let opens = Opens::default();
+        assert!(!register(&opens, std::iter::once(link.to_string_lossy().into_owned())));
+        assert!(lock(&opens.allowed).is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_queue_is_bounded() {
+        let dir = temp_dir("bounded");
+        let opens = Opens::default();
+        let mut paths = Vec::new();
+        for i in 0..(MAX_QUEUED_PATHS + 20) {
+            let p = dir.join(format!("b{i}.epub"));
+            fs::write(&p, b"x").unwrap();
+            paths.push(p.to_string_lossy().into_owned());
+        }
+        register(&opens, paths.into_iter());
+        assert_eq!(lock(&opens.pending).len(), MAX_QUEUED_PATHS);
         let _ = fs::remove_dir_all(dir);
     }
 

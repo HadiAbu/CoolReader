@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets and signing material must never be committed
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12

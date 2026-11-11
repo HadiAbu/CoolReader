@@ -10,6 +10,17 @@ import type { ReadingRow } from "../stats/logic";
 export const BACKUP_FORMAT = "folio-backup";
 export const BACKUP_VERSION = 1;
 
+/** Bounds for a (possibly hand-edited) backup file. They stop a crafted file bloating the user's own storage. */
+export const MAX_BACKUP_BYTES = 25 * 1024 * 1024;
+const MAX_BOOKS = 5_000;
+const MAX_ANNOTATIONS_PER_BOOK = 20_000;
+const MAX_READING_ROWS = 100_000;
+const MAX_DAY_SECONDS = 86_400;
+const MAX_TEXT = 5_000;
+const MAX_NOTE = 20_000;
+const MAX_LABEL = 500;
+const MAX_TITLE = 500;
+
 export interface BackupBook {
   id: string;
   title: string;
@@ -61,6 +72,13 @@ export const buildBackup = (
 
 const KINDS: AnnotationKind[] = ["highlight", "bookmark"];
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar day, not just something shaped like one (rejects 9999-99-99 and 2026-02-31). */
+const isRealDay = (day: string): boolean => {
+  if (!DAY_RE.test(day)) return false;
+  const [y, m, d] = day.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+};
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -78,9 +96,9 @@ const asAnnotation = (v: unknown, bookId: string): Annotation | null => {
     kind: a.kind as AnnotationKind,
     cfi: a.cfi,
     color: a.color as Annotation["color"],
-    text: a.text,
-    note: a.note,
-    label: a.label,
+    text: a.text.slice(0, MAX_TEXT),
+    note: a.note.slice(0, MAX_NOTE),
+    label: a.label.slice(0, MAX_LABEL),
     fraction: Math.min(1, Math.max(0, a.fraction)),
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
@@ -117,16 +135,20 @@ export const parseBackup = (text: string): ParseResult => {
       skipped++;
       continue;
     }
+    if (books.length >= MAX_BOOKS) {
+      skipped++;
+      continue;
+    }
     const annotations: Annotation[] = [];
     for (const a of Array.isArray(b.annotations) ? b.annotations : []) {
-      const ok = asAnnotation(a, b.id);
+      const ok = annotations.length < MAX_ANNOTATIONS_PER_BOOK ? asAnnotation(a, b.id) : null;
       if (ok) annotations.push(ok);
       else skipped++;
     }
     books.push({
       id: b.id,
-      title: isStr(b.title) ? b.title : "Untitled",
-      author: isStr(b.author) ? b.author : "",
+      title: isStr(b.title) ? b.title.slice(0, MAX_TITLE) : "Untitled",
+      author: isStr(b.author) ? b.author.slice(0, MAX_TITLE) : "",
       progress: isNum(b.progress) ? Math.min(1, Math.max(0, b.progress)) : 0,
       cfi: isStr(b.cfi) ? b.cfi : null,
       lastOpenedAt: isNum(b.lastOpenedAt) ? b.lastOpenedAt : null,
@@ -136,7 +158,7 @@ export const parseBackup = (text: string): ParseResult => {
   const reading: BackupReading[] = [];
   for (const item of Array.isArray(obj.reading) ? obj.reading : []) {
     const r = item as Record<string, unknown> | null;
-    if (r && isStr(r.day) && DAY_RE.test(r.day) && isStr(r.bookId) && r.bookId && isNum(r.seconds) && r.seconds >= 0) {
+    if (reading.length < MAX_READING_ROWS && r && isStr(r.day) && isRealDay(r.day) && isStr(r.bookId) && r.bookId && isNum(r.seconds) && r.seconds >= 0 && r.seconds <= MAX_DAY_SECONDS) {
       reading.push({ day: r.day, bookId: r.bookId, seconds: r.seconds });
     } else skipped++;
   }
@@ -158,6 +180,8 @@ export interface RestorePlan {
     missingBooks: string[];
     annotationsAdded: number;
     annotationsUpdated: number;
+    /** Annotations ignored because their id already belongs to another book (or repeats inside the file). */
+    annotationsSkipped: number;
     progressRestored: number;
     readingDays: number;
   };
@@ -179,12 +203,24 @@ export const planRestore = (
     annotationsToPut: [],
     readingToPut: [],
     progressUpdates: [],
-    summary: { books: backup.books.length, missingBooks: [], annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0, readingDays: 0 },
+    summary: { books: backup.books.length, missingBooks: [], annotationsAdded: 0, annotationsUpdated: 0, annotationsSkipped: 0, progressRestored: 0, readingDays: 0 },
   };
+
+  // Annotations are stored under their id alone, so an id that already belongs to another book must never be
+  // overwritten (that would silently rebind and replace someone else's note). `existing` must cover every book.
+  const ownerOf = new Map<string, string>();
+  for (const list of existing.values()) for (const a of list) ownerOf.set(a.id, a.bookId);
+  const seenIds = new Set<string>();
 
   for (const b of backup.books) {
     const have = new Map((existing.get(b.id) ?? []).map((a) => [a.id, a]));
     for (const a of b.annotations) {
+      const owner = ownerOf.get(a.id);
+      if ((owner !== undefined && owner !== b.id) || seenIds.has(a.id)) {
+        plan.summary.annotationsSkipped++;
+        continue;
+      }
+      seenIds.add(a.id);
       const cur = have.get(a.id);
       if (!cur) {
         plan.annotationsToPut.push(a);
@@ -221,6 +257,7 @@ export const restoreSummary = (s: RestorePlan["summary"], skipped: number): stri
   const parts: string[] = [];
   const notes = s.annotationsAdded + s.annotationsUpdated;
   parts.push(notes ? `Restored ${notes} ${notes === 1 ? "note" : "notes"}` : "No new notes to restore");
+  if (s.annotationsSkipped) parts.push(`${s.annotationsSkipped} ${s.annotationsSkipped === 1 ? "note was" : "notes were"} skipped (duplicate or belonging to another book)`);
   if (s.readingDays) parts.push(`${s.readingDays} ${s.readingDays === 1 ? "day" : "days"} of reading history`);
   if (s.progressRestored) parts.push(`${s.progressRestored} reading ${s.progressRestored === 1 ? "position" : "positions"}`);
   if (s.missingBooks.length) {
