@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { detectDeviceClass, useSettings } from "../state/settings";
-import { surfaceList, themeList, type Surface } from "../themes/themes";
+import { surfaceList, themeList, type SurfacePref } from "../themes/themes";
 import {
   UI_SCALE_MAX,
   UI_SCALE_MIN,
@@ -35,7 +35,7 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
   const s = useSettings();
   const restoreInput = useRef<HTMLInputElement>(null);
   const device = detectDeviceClass();
-  const surfaceValue: Surface | "auto" = s.surface ?? "auto";
+  const surfaceValue: SurfacePref | "auto" = s.surface ?? "auto";
 
   return (
     <div className="panel" role="dialog" aria-label="Text settings">
@@ -49,7 +49,7 @@ export function SettingsPanel({ data }: { data?: DataActions }) {
           ))}
         </div>
         <div className="seg">
-          {(["auto", ...surfaceList] as const).map((v) => (
+          {(["auto", ...surfaceList, "system"] as const).map((v) => (
             <button
               key={v}
               aria-pressed={surfaceValue === v}

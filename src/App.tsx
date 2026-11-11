@@ -15,13 +15,15 @@ import {
   type ScreenRect,
   type SelectionInfo,
 } from "./reader/ReaderView";
+import { keyAction, shouldHandleKey, type KeyAction } from "./reader/keys";
 import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchState } from "./search/logic";
 import type { ReadingRow } from "./stats/logic";
 import { useReadingTimer } from "./stats/useReadingTimer";
+import { toggleFullscreen } from "./platform/fullscreen";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
-import { applyTheme, readerCss, themes } from "./themes/themes";
+import { applyTheme, readerCss, resolveSurface, themes } from "./themes/themes";
 import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
 import { NotesPanel } from "./ui/NotesPanel";
@@ -30,6 +32,20 @@ import { SettingsPanel } from "./ui/SettingsPanel";
 import { StatsPanel } from "./ui/StatsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
+
+/** Tracks the OS light/dark preference so "System" can follow it live. */
+const useSystemDark = () => {
+  const query = "(prefers-color-scheme: dark)";
+  const [dark, setDark] = useState(() => window.matchMedia?.(query).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const on = (e: MediaQueryListEvent) => setDark(e.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return dark;
+};
 
 const useViewportWidth = () => {
   const [w, setW] = useState(() => window.innerWidth);
@@ -48,7 +64,8 @@ export default function App() {
   const settings = useSettings();
   const { themeId, zoom, layoutMode, charsPerLine, lineHeight, justify, hyphenate, uiScale } = settings;
   const theme = themes[themeId];
-  const surface = settings.surface ?? theme.defaultSurface;
+  const systemDark = useSystemDark();
+  const surface = resolveSurface(settings.surface, theme, systemDark);
   const viewportWidth = useViewportWidth();
   const lib = useLibrary(repo);
 
@@ -309,6 +326,42 @@ export default function App() {
     }
   };
 
+  // ---- keyboard: the window and the book frames feed the same handler ----
+  const handleKeyAction = useCallback(
+    (a: KeyAction) => {
+      const api = apiRef.current;
+      switch (a) {
+        case "left": api?.left(); break;
+        case "right": api?.right(); break;
+        case "prev": api?.prev(); break;
+        case "next": api?.next(); break;
+        case "first": api?.goToFraction(0); break;
+        case "last": api?.goToFraction(1); break;
+        case "fullscreen": void toggleFullscreen(); break;
+        case "escape":
+          // Close the innermost thing first: the floating toolbar, then a side panel.
+          if (selection || active) dismissPopover();
+          else if (panel !== "none") setPanel("none");
+          break;
+      }
+    },
+    [selection, active, panel, dismissPopover],
+  );
+
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const a = keyAction(e);
+      if (!a) return;
+      const global = a === "escape" || a === "fullscreen";
+      // Page keys only turn pages while reading, and never steal keys from text fields.
+      if (!global && (view.kind !== "reader" || !shouldHandleKey(e, e.target as HTMLElement | null))) return;
+      e.preventDefault();
+      handleKeyAction(a);
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [view.kind, handleKeyAction]);
+
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
     const list = Array.from(files ?? []);
@@ -481,6 +534,7 @@ export default function App() {
               onZoomAction={doZoom}
               onPinch={onPinch}
               onFind={() => setPanel("search")}
+              onKeyAction={handleKeyAction}
               onActivity={timer.touch}
               onSelection={(s) => {
                 setSelection(s);

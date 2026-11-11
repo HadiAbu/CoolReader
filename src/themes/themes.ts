@@ -103,6 +103,21 @@ export const themes: Record<ThemeId, Theme> = {
 export const themeList: Theme[] = [themes.paper, themes.midnight, themes.quiet];
 export const surfaceList: Surface[] = ["light", "sepia", "dark"];
 
+/** What the user chose: a fixed surface, "system" (follow the OS), or null for the theme's own default. */
+export type SurfacePref = Surface | "system" | null;
+
+/**
+ * The surface to show. When following the system, a dark OS gives the dark surface; a light OS gives the
+ * theme's own light-ish default (or plain light for themes that default to dark, like Midnight).
+ */
+export const resolveSurface = (pref: SurfacePref, theme: Theme, systemDark: boolean): Surface => {
+  if (pref === "system") {
+    if (systemDark) return "dark";
+    return theme.defaultSurface === "dark" ? "light" : theme.defaultSurface;
+  }
+  return pref ?? theme.defaultSurface;
+};
+
 /** Write a theme's tokens onto an element as CSS variables. */
 export const applyTheme = (el: HTMLElement, theme: Theme, surface: Surface): void => {
   const s = theme.surfaces[surface];

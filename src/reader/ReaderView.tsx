@@ -5,6 +5,7 @@ import { HIGHLIGHT_COLORS } from "../annotations/logic";
 import type { Annotation } from "../annotations/types";
 import { lang } from "../library/meta";
 import type { SearchEvent } from "../search/logic";
+import { keyAction, type KeyAction } from "./keys";
 import { zoomActionForEvent, type ReaderLayout, type ZoomAction } from "./zoom";
 
 export interface RelocateDetail {
@@ -50,6 +51,8 @@ interface FoliateView extends HTMLElement {
   goToFraction(f: number): Promise<void>;
   goLeft(): Promise<void>;
   goRight(): Promise<void>;
+  next(): Promise<void>;
+  prev(): Promise<void>;
   getCFI(index: number, range?: Range): string;
   resolveCFI(cfi: string): { index: number };
   addAnnotation(a: FoliateAnnotation, remove?: boolean): Promise<unknown>;
@@ -72,6 +75,9 @@ export interface ReaderApi {
   goToFraction: (f: number) => void;
   next: () => void;
   prev: () => void;
+  /** Visual left/right: right-to-left books swap these relative to prev/next. */
+  left: () => void;
+  right: () => void;
   clearSelection: () => void;
   /** Streams results and paints matches on the page; start a new search to cancel the old one. */
   search: (opts: { query: string; matchCase?: boolean; matchWholeWords?: boolean }) => AsyncIterable<SearchEvent>;
@@ -91,6 +97,8 @@ interface Props {
   onSelection?: (s: SelectionInfo | null) => void;
   /** Ctrl/Cmd+F pressed while the book has focus. */
   onFind?: () => void;
+  /** Navigation and window keys pressed while the book has focus (arrows, Page keys, Space, Esc, F11). */
+  onKeyAction?: (a: KeyAction) => void;
   /** Any input inside the book (keys, taps, wheel) or a page change; used to time reading. */
   onActivity?: () => void;
   /** Two-finger pinch on the book text. ratio = currentDistance / startDistance. */
@@ -137,6 +145,7 @@ export function ReaderView({
   onZoomAction,
   onSelection,
   onFind,
+  onKeyAction,
   onActivity,
   onPinch,
   onAnnotationClick,
@@ -147,8 +156,8 @@ export function ReaderView({
   const drawnRef = useRef(new Map<string, Annotation>());
 
   // Latest props, readable from long-lived listeners without re-running the open effect.
-  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onActivity, onPinch, onAnnotationClick });
-  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onActivity, onPinch, onAnnotationClick };
+  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onPinch, onAnnotationClick });
+  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onPinch, onAnnotationClick };
 
   // Open a book.
   useEffect(() => {
@@ -177,8 +186,12 @@ export function ReaderView({
         latest.current.onFind?.();
         return;
       }
-      if (ev.key === "ArrowLeft" || ev.key === "PageUp") view.goLeft();
-      else if (ev.key === "ArrowRight" || ev.key === "PageDown" || ev.key === " ") view.goRight();
+      // Everything else is handled by the app so the window and the book frames behave identically.
+      const nav = keyAction(ev);
+      if (nav) {
+        e.preventDefault();
+        latest.current.onKeyAction?.(nav);
+      }
     };
 
     // Book content lives in an iframe, so events never reach the app window: attach to each section doc.
@@ -285,8 +298,10 @@ export function ReaderView({
       apiRef.current = {
         goTo: (t) => void view.goTo(t).catch(() => {}),
         goToFraction: (f) => void view.goToFraction(f).catch(() => {}),
-        next: () => void view.goRight().catch(() => {}),
-        prev: () => void view.goLeft().catch(() => {}),
+        next: () => void view.next().catch(() => {}),
+        prev: () => void view.prev().catch(() => {}),
+        left: () => void view.goLeft().catch(() => {}),
+        right: () => void view.goRight().catch(() => {}),
         search: (o) => view.search({ ...o, draw: Overlayer.outline, drawOptions: { color: "#e8590c" } }),
         clearSearch: () => {
           try {
