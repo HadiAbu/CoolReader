@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "epub-reader",
+  "productName": "Folio",
   "version": "0.1.0",
   "identifier": "com.folio.reader",
   "build": {
@@ -12,13 +12,16 @@
   "app": {
     "windows": [
       {
-        "title": "epub-reader",
-        "width": 800,
-        "height": 600
+        "title": "Folio",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 420,
+        "minHeight": 480,
+        "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' blob: data:; frame-src blob:; connect-src 'self' ipc: http://ipc.localhost blob: ws://localhost:1420 http://localhost:1420"
     }
   },
   "bundle": {
