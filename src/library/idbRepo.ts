@@ -33,10 +33,19 @@ const openDb = (): Promise<IDBDatabase> =>
       resolve(db);
     };
     req.onerror = () => reject(req.error);
+    // Another window still holds an older schema open and has not stepped aside: fail visibly instead of hanging.
+    req.onblocked = () => reject(new Error("The library is open in another Folio window. Close it and try again."));
   });
 
 let sharedDb: Promise<IDBDatabase> | null = null;
-const getDb = () => (sharedDb ??= openDb());
+const getDb = () => {
+  // Never cache a failed open, so a retry (after closing the other window) can succeed.
+  sharedDb ??= openDb().catch((e) => {
+    sharedDb = null;
+    throw e;
+  });
+  return sharedDb;
+};
 
 const wrap = <T,>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
