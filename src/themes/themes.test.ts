@@ -88,6 +88,14 @@ describe("readerCss", () => {
     expect(css).toContain("text-align: justify");
     expect(css).toContain("hyphens: manual");
   });
+  it("never interpolates an unchecked value into the stylesheet", () => {
+    const css = readerCss({ ...base, lineHeight: "1.6;}body{display:none" as unknown as number, fontPx: Number.NaN, justify: "yes" as unknown as boolean });
+    expect(css).not.toContain("display:none");
+    expect(css).toContain("line-height: 1.6;");
+    expect(css).toContain("font-size: 18px !important");
+    expect(css).toContain("text-align: start");
+    expect(readerCss({ ...base, fontPx: 9999 })).toContain("font-size: 400px !important");
+  });
   it("switches the colour scheme for dark surfaces", () => {
     expect(readerCss({ ...base, surface: "dark" })).toContain("color-scheme: dark");
   });

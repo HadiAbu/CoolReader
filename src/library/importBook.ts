@@ -1,5 +1,6 @@
 import { makeBook } from "../../vendor/foliate-js/view.js";
 import { bookId } from "./logic";
+import { looksLikePdf, MAX_BOOK_BYTES, PARSE_TIMEOUT_MS, withTimeout } from "./importGuards";
 import { lang } from "./meta";
 import type { Book, BookRepo } from "./types";
 
@@ -30,15 +31,19 @@ export type ImportResult =
   | { status: "added"; book: Book }
   | { status: "duplicate"; id: string }
   | { status: "unsupported"; name: string }
+  | { status: "too_large"; name: string }
   | { status: "failed"; name: string; error: string };
 
 export const importBook = async (file: File, repo: BookRepo, existingIds: Set<string>): Promise<ImportResult> => {
   if (!isSupported(file.name)) return { status: "unsupported", name: file.name };
+  // Refuse oversized files before reading them, and PDFs (foliate sniffs content, so a renamed PDF would reach its PDF engine).
+  if (file.size > MAX_BOOK_BYTES) return { status: "too_large", name: file.name };
   try {
+    if (looksLikePdf(new Uint8Array(await file.slice(0, 1024).arrayBuffer()))) return { status: "unsupported", name: file.name };
     const id = await bookId(await file.arrayBuffer());
     if (existingIds.has(id)) return { status: "duplicate", id };
 
-    const parsed = await makeBook(file);
+    const parsed = await withTimeout(makeBook(file), PARSE_TIMEOUT_MS);
     const coverRaw = await Promise.resolve(parsed.getCover?.()).catch(() => null);
     const cover = coverRaw ? await thumbnail(coverRaw) : null;
 

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { SurfacePref, ThemeId } from "../themes/themes";
+import { themeList, type SurfacePref, type ThemeId } from "../themes/themes";
 import {
   clampUiScale,
   clampZoom,
@@ -52,6 +52,33 @@ export const defaultsFor = (device: DeviceClass) => ({
   hyphenate: true,
 });
 
+const SURFACES = new Set(["light", "sepia", "dark", "system"]);
+const LAYOUTS = new Set<LayoutMode>(["auto", "single", "spread", "scroll"]);
+const num = (v: unknown, fallback: number, min: number, max: number): number =>
+  typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+
+type Persisted = Pick<SettingsState, "themeId" | "surface" | "zoom" | "uiScale" | "layoutMode" | "charsPerLine" | "lineHeight" | "justify" | "hyphenate">;
+
+/**
+ * Repair whatever was read from localStorage. Anything unknown or out of range falls back to the
+ * default, so a corrupt or hand-edited value can never crash the app on startup or reach the CSS
+ * injected into book frames.
+ */
+export const sanitizePersistedSettings = (raw: unknown, base: Persisted): Persisted => {
+  const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    themeId: themeList.some((t) => t.id === p.themeId) ? (p.themeId as ThemeId) : base.themeId,
+    surface: p.surface === null || (typeof p.surface === "string" && SURFACES.has(p.surface)) ? (p.surface as SurfacePref) : base.surface,
+    zoom: clampZoom(num(p.zoom, base.zoom, 0, 10_000)),
+    uiScale: clampUiScale(num(p.uiScale, base.uiScale, 0, 10_000)),
+    layoutMode: typeof p.layoutMode === "string" && LAYOUTS.has(p.layoutMode as LayoutMode) ? (p.layoutMode as LayoutMode) : base.layoutMode,
+    charsPerLine: Math.round(num(p.charsPerLine, base.charsPerLine, 45, 75)),
+    lineHeight: num(p.lineHeight, base.lineHeight, 1.2, 2.4),
+    justify: typeof p.justify === "boolean" ? p.justify : base.justify,
+    hyphenate: typeof p.hyphenate === "boolean" ? p.hyphenate : base.hyphenate,
+  };
+};
+
 export const storageKeyFor = (device: DeviceClass) => `folio.settings.${device}`;
 
 /**
@@ -80,6 +107,7 @@ export const createSettingsStore = (device: DeviceClass) =>
         name: storageKeyFor(device),
         storage: createJSONStorage(() => localStorage),
         version: 1,
+        merge: (persisted, current) => ({ ...current, ...sanitizePersistedSettings(persisted, current) }),
         partialize: (s) => ({
           themeId: s.themeId,
           surface: s.surface,

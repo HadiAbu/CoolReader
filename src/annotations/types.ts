@@ -21,6 +21,8 @@ export interface Annotation {
 
 export interface AnnotationRepo {
   list(bookId: string): Promise<Annotation[]>;
+  /** Every annotation across all books (used to check id ownership when restoring a backup). */
+  listAll(): Promise<Annotation[]>;
   put(annotation: Annotation): Promise<void>;
   remove(id: string): Promise<void>;
   removeForBook(bookId: string): Promise<void>;

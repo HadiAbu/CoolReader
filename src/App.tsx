@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookmarksOnPage, excerpt, newId, startOf } from "./annotations/logic";
 import { downloadText } from "./backup/download";
-import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary } from "./backup/logic";
+import { backupFilename, buildBackup, MAX_BACKUP_BYTES, parseBackup, planRestore, restoreSummary } from "./backup/logic";
 import type { Annotation, HighlightColor } from "./annotations/types";
 import { useAnnotations } from "./annotations/useAnnotations";
 import { annotationRepo, repo, statsRepo } from "./library/repo";
@@ -308,14 +308,18 @@ export default function App() {
 
   const restoreData = async (file: File) => {
     try {
+      if (file.size > MAX_BACKUP_BYTES) {
+        setDataMessage("That file is too large to be a Folio backup.");
+        return;
+      }
       const parsed = parseBackup(await file.text());
       if (!parsed.ok) {
         setDataMessage(parsed.error);
         return;
       }
-      const existing = new Map(
-        await Promise.all(parsed.backup.books.map(async (b) => [b.id, await annotationRepo.list(b.id)] as const)),
-      );
+      // Every existing annotation, grouped by book, so ids owned by other books are never overwritten.
+      const existing = new Map<string, Annotation[]>();
+      for (const a of await annotationRepo.listAll()) existing.set(a.bookId, [...(existing.get(a.bookId) ?? []), a]);
       const plan = planRestore(parsed.backup, lib.books, existing, await statsRepo.list());
       for (const a of plan.annotationsToPut) await annotationRepo.put(a);
       for (const r of plan.readingToPut) await statsRepo.put(r);
@@ -481,8 +485,15 @@ export default function App() {
             }}
             onOpen={openBook}
             onRemove={(id) => {
-              void annotationRepo.removeForBook(id);
-              void lib.remove(id);
+              // Notes first, then the book: if either step fails nothing is left half-deleted silently.
+              void (async () => {
+                try {
+                  await annotationRepo.removeForBook(id);
+                  await lib.remove(id);
+                } catch (e) {
+                  setError(`Could not remove the book: ${e instanceof Error ? e.message : String(e)}`);
+                }
+              })();
             }}
             onPickFiles={pickFiles}
             headerExtra={

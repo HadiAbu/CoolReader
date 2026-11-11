@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Annotation } from "../annotations/types";
 import type { Book } from "../library/types";
 import type { ReadingRow } from "../stats/logic";
-import { backupFilename, buildBackup, parseBackup, planRestore, restoreSummary, type BackupFile } from "./logic";
+import { backupFilename, buildBackup, MAX_BACKUP_BYTES, parseBackup, planRestore, restoreSummary, type BackupFile } from "./logic";
 
 const book = (o: Partial<Book> & { id: string }): Book => ({
   title: o.id, author: "A", format: "epub", size: 1, addedAt: 1, lastOpenedAt: null, progress: 0, cfi: null, hasCover: false, ...o,
@@ -151,16 +151,79 @@ describe("planRestore", () => {
   });
 });
 
+describe("restore cannot touch another book's notes (audit H4)", () => {
+  const mkBackup = (books: BackupFile["books"]): BackupFile => ({ format: "folio-backup", version: 1, exportedAt: 1, books });
+  const bk = (id: string, annotations: Annotation[]): BackupFile["books"][number] => ({ id, title: id, author: "", progress: 0, cfi: null, lastOpenedAt: null, annotations });
+
+  it("skips an annotation whose id already belongs to a different book", () => {
+    const victim = note({ id: "shared-uuid", bookId: "X", text: "my private note", updatedAt: 5 });
+    // A crafted backup lists the victim's id under book Y with newer-looking content.
+    const crafted = mkBackup([bk("Y", [note({ id: "shared-uuid", bookId: "Y", text: "overwritten", updatedAt: 999 })])]);
+    const existing = new Map([["X", [victim]]]);
+    const plan = planRestore(crafted, [book({ id: "X" }), book({ id: "Y" })], existing);
+    expect(plan.annotationsToPut).toEqual([]);
+    expect(plan.summary.annotationsSkipped).toBe(1);
+  });
+
+  it("still restores an id under its own book, and de-duplicates ids inside one file", () => {
+    const mine = note({ id: "n1", bookId: "X", updatedAt: 1 });
+    const newer = note({ id: "n1", bookId: "X", updatedAt: 9, text: "edited elsewhere" });
+    const plan = planRestore(mkBackup([bk("X", [newer, newer])]), [book({ id: "X" })], new Map([["X", [mine]]]));
+    expect(plan.annotationsToPut).toHaveLength(1);
+    expect(plan.summary.annotationsUpdated).toBe(1);
+    expect(plan.summary.annotationsSkipped).toBe(1); // the repeated copy
+  });
+
+  it("skips the same id appearing under two different books in the file", () => {
+    const plan = planRestore(mkBackup([bk("A", [note({ id: "dup", bookId: "A" })]), bk("B", [note({ id: "dup", bookId: "B" })])]), [], new Map());
+    expect(plan.annotationsToPut).toHaveLength(1);
+    expect(plan.summary.annotationsSkipped).toBe(1);
+  });
+});
+
+describe("backup bounds (audit H4/H5)", () => {
+  const wrap = (reading: unknown[], books: unknown[] = []) => JSON.stringify({ format: "folio-backup", version: 1, books, reading });
+
+  it("rejects impossible calendar days and implausible seconds", () => {
+    const r = parseBackup(wrap([
+      { day: "2026-11-10", bookId: "a", seconds: 100 },
+      { day: "9999-99-99", bookId: "a", seconds: 100 },
+      { day: "2026-02-31", bookId: "a", seconds: 100 },
+      { day: "2026-11-10", bookId: "b", seconds: 86_401 },
+    ]));
+    expect(r.ok && r.backup.reading).toHaveLength(1);
+    expect(r.ok && r.skipped).toBe(3);
+  });
+
+  it("truncates over-long text, notes and labels instead of storing them whole", () => {
+    const a = { id: "n", kind: "highlight", cfi: "epubcfi(/6/4)", color: "yellow", text: "x".repeat(10_000), note: "y".repeat(50_000), label: "z".repeat(2_000), fraction: 0.1, createdAt: 1, updatedAt: 1 };
+    const r = parseBackup(wrap([], [{ id: "b", title: "t".repeat(5_000), annotations: [a] }]));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const out = r.backup.books[0];
+      expect(out.title.length).toBe(500);
+      expect(out.annotations[0].text.length).toBe(5_000);
+      expect(out.annotations[0].note.length).toBe(20_000);
+      expect(out.annotations[0].label.length).toBe(500);
+    }
+  });
+
+  it("exposes a file-size ceiling", () => {
+    expect(MAX_BACKUP_BYTES).toBe(25 * 1024 * 1024);
+  });
+});
+
 describe("messages", () => {
   it("summarises a restore", () => {
-    const s = { books: 2, missingBooks: ["X"], annotationsAdded: 2, annotationsUpdated: 1, progressRestored: 1, readingDays: 3 };
+    const s = { books: 2, missingBooks: ["X"], annotationsAdded: 2, annotationsUpdated: 1, annotationsSkipped: 1, progressRestored: 1, readingDays: 3 };
     const m = restoreSummary(s, 2);
     expect(m).toContain("Restored 3 notes");
     expect(m).toContain("3 days of reading history");
+    expect(m).toContain("1 note was skipped");
     expect(m).toContain("1 reading position");
     expect(m).toContain("1 book is not in your library yet");
     expect(m).toContain("2 unreadable entries skipped");
-    expect(restoreSummary({ ...s, annotationsAdded: 0, annotationsUpdated: 0, progressRestored: 0, readingDays: 0, missingBooks: [] }, 0)).toBe("No new notes to restore");
+    expect(restoreSummary({ ...s, annotationsAdded: 0, annotationsUpdated: 0, annotationsSkipped: 0, progressRestored: 0, readingDays: 0, missingBooks: [] }, 0)).toBe("No new notes to restore");
   });
   it("names the file by date", () => {
     expect(backupFilename(new Date(2026, 10, 3))).toBe("folio-backup-2026-11-03.json");

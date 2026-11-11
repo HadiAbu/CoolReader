@@ -6,6 +6,7 @@ export interface ImportSummary {
   added: number;
   duplicates: number;
   unsupported: string[];
+  tooLarge: string[];
   failed: { name: string; error: string }[];
 }
 
@@ -13,6 +14,7 @@ export const summarize = (s: ImportSummary): string => {
   const parts: string[] = [];
   if (s.added) parts.push(`Added ${s.added} ${s.added === 1 ? "book" : "books"}`);
   if (s.duplicates) parts.push(`${s.duplicates} already in your library`);
+  if (s.tooLarge.length) parts.push(`${s.tooLarge.length} file${s.tooLarge.length === 1 ? "" : "s"} too large (limit 256 MB)`);
   if (s.unsupported.length) parts.push(`${s.unsupported.length} unsupported file${s.unsupported.length === 1 ? "" : "s"}`);
   if (s.failed.length) parts.push(`${s.failed.length} could not be read`);
   return parts.join(" · ");
@@ -47,7 +49,7 @@ export function useLibrary(repo: BookRepo) {
     async (files: File[]) => {
       if (!files.length) return;
       setImporting(true);
-      const summary: ImportSummary = { added: 0, duplicates: 0, unsupported: [], failed: [] };
+      const summary: ImportSummary = { added: 0, duplicates: 0, unsupported: [], tooLarge: [], failed: [] };
       const added: Book[] = [];
       /** Every book the user handed us that is now in the library: new ones and ones we already had. */
       const opened: Book[] = [];
@@ -63,6 +65,7 @@ export function useLibrary(repo: BookRepo) {
           if (existing) opened.push(existing);
         }
         else if (r.status === "unsupported") summary.unsupported.push(r.name);
+        else if (r.status === "too_large") summary.tooLarge.push(r.name);
         else summary.failed.push({ name: r.name, error: r.error });
       }
       if (added.length) setBooks((prev) => [...prev, ...added]);
