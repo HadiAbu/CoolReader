@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { repo } from "./library/repo";
+import { bookmarksOnPage, excerpt, newId, startOf } from "./annotations/logic";
+import type { Annotation, HighlightColor } from "./annotations/types";
+import { useAnnotations } from "./annotations/useAnnotations";
+import { annotationRepo, repo } from "./library/repo";
 import type { Book } from "./library/types";
 import { useLibrary } from "./library/useLibrary";
-import { ReaderView, type BookInfo, type ReaderApi, type RelocateDetail } from "./reader/ReaderView";
+import {
+  ReaderView,
+  type BookInfo,
+  type ReaderApi,
+  type RelocateDetail,
+  type ScreenRect,
+  type SelectionInfo,
+} from "./reader/ReaderView";
 import { computeLayout, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { useSettings } from "./state/settings";
 import { applyTheme, readerCss, themes } from "./themes/themes";
+import { AnnotationPopover } from "./ui/AnnotationPopover";
 import { Library } from "./ui/Library";
+import { NotesPanel } from "./ui/NotesPanel";
 import { SettingsPanel } from "./ui/SettingsPanel";
 import { Toc } from "./ui/Toc";
 import "./App.css";
@@ -36,7 +48,10 @@ export default function App() {
   const [info, setInfo] = useState<BookInfo | null>(null);
   const [progress, setProgress] = useState<RelocateDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"none" | "settings" | "toc">("none");
+  const [panel, setPanel] = useState<"none" | "settings" | "toc" | "notes">("none");
+  const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [active, setActive] = useState<{ id: string; rect: ScreenRect } | null>(null);
+  const ann = useAnnotations(view.kind === "reader" ? view.book.id : null, annotationRepo);
   const apiRef = useRef<ReaderApi | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const pending = useRef<PendingSave | null>(null);
@@ -118,6 +133,8 @@ export default function App() {
     setInfo(null);
     setProgress(null);
     setPanel("none");
+    setSelection(null);
+    setActive(null);
     setView({ kind: "reader", book, file, startCfi: book.cfi });
     void patch(book.id, { lastOpenedAt: Date.now() });
   };
@@ -126,8 +143,65 @@ export default function App() {
     flushSave();
     setPanel("none");
     setError(null);
+    setSelection(null);
+    setActive(null);
     setView({ kind: "library" });
   };
+
+  // ---- highlights, notes and bookmarks ----
+  const dismissPopover = useCallback(() => {
+    setSelection(null);
+    setActive(null);
+    apiRef.current?.clearSelection();
+  }, []);
+
+  const baseAnnotation = (kind: Annotation["kind"], cfi: string, text: string, color: HighlightColor): Annotation => {
+    const now = Date.now();
+    return {
+      id: newId(),
+      bookId: view.kind === "reader" ? view.book.id : "",
+      kind,
+      cfi,
+      color,
+      text,
+      note: "",
+      label: progress?.tocItem?.label?.trim() ?? "",
+      fraction: progress?.fraction ?? 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+  };
+
+  const createHighlight = async (color: HighlightColor) => {
+    if (!selection) return;
+    const a = baseAnnotation("highlight", selection.cfi, excerpt(selection.text), color);
+    const rect = selection.rect;
+    await ann.add(a);
+    apiRef.current?.clearSelection();
+    setSelection(null);
+    setActive({ id: a.id, rect });
+  };
+
+  const bookmarksHere = useMemo(() => bookmarksOnPage(ann.items, progress?.cfi), [ann.items, progress?.cfi]);
+  const toggleBookmark = async () => {
+    if (bookmarksHere.length) {
+      for (const b of bookmarksHere) await ann.remove(b.id);
+      return;
+    }
+    if (!progress?.cfi) return;
+    const label = progress.tocItem?.label?.trim() ?? "";
+    await ann.add(baseAnnotation("bookmark", startOf(progress.cfi), label || `Page at ${Math.round(progress.fraction * 100)}%`, "yellow"));
+  };
+
+  const editing = active ? ann.items.find((a) => a.id === active.id) : undefined;
+
+  // Opening any side panel closes the floating toolbar so the two never overlap.
+  useEffect(() => {
+    if (panel !== "none") {
+      setSelection(null);
+      setActive(null);
+    }
+  }, [panel]);
 
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
@@ -186,7 +260,10 @@ export default function App() {
               lib.clearNotice();
             }}
             onOpen={openBook}
-            onRemove={(id) => void lib.remove(id)}
+            onRemove={(id) => {
+              void annotationRepo.removeForBook(id);
+              void lib.remove(id);
+            }}
             onPickFiles={pickFiles}
             headerExtra={settingsToggle}
           />
@@ -215,6 +292,27 @@ export default function App() {
               >
                 ☰
               </button>
+              <button
+                className="btn icon bm"
+                aria-label={bookmarksHere.length ? "Remove bookmark" : "Add bookmark"}
+                aria-pressed={bookmarksHere.length > 0}
+                disabled={!progress?.cfi}
+                onClick={() => void toggleBookmark()}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill={bookmarksHere.length ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 3h12v18l-6-4-6 4z" />
+                </svg>
+              </button>
+              <button
+                className="btn icon"
+                aria-label="Highlights and bookmarks"
+                aria-pressed={panel === "notes"}
+                onClick={() => setPanel(panel === "notes" ? "none" : "notes")}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m4 20 4-1 11-11-3-3L5 16zM14 6l3 3" />
+                </svg>
+              </button>
               {settingsToggle}
             </div>
           </header>
@@ -227,12 +325,62 @@ export default function App() {
               layout={layout}
               css={css}
               apiRef={apiRef}
+              annotations={ann.items}
               onBook={setInfo}
               onRelocate={onRelocate}
               onError={(e) => setError(e instanceof Error ? e.message : String(e))}
               onZoomAction={doZoom}
+              onSelection={(s) => {
+                setSelection(s);
+                setActive(null);
+              }}
+              onAnnotationClick={({ id, rect }) => {
+                setSelection(null);
+                setActive({ id, rect });
+              }}
             />
             {error ? <div className="error" role="alert">Could not open this book: {error}</div> : null}
+
+            {selection ? (
+              <AnnotationPopover
+                rect={selection.rect}
+                mode="create"
+                onPickColor={(c) => void createHighlight(c)}
+                onSaveNote={() => {}}
+                onCopy={() => {
+                  void navigator.clipboard?.writeText(selection.text).catch(() => {});
+                  dismissPopover();
+                }}
+                onClose={dismissPopover}
+              />
+            ) : null}
+            {active && editing ? (
+              <AnnotationPopover
+                rect={active.rect}
+                mode="edit"
+                color={editing.color}
+                note={editing.note}
+                onPickColor={(c) => void ann.update(editing.id, { color: c })}
+                onSaveNote={(note) => void ann.update(editing.id, { note })}
+                onDelete={() => {
+                  void ann.remove(editing.id);
+                  setActive(null);
+                }}
+                onClose={dismissPopover}
+              />
+            ) : null}
+
+            {panel === "notes" ? (
+              <NotesPanel
+                book={{ title: info?.title ?? view.book.title, author: info?.author ?? view.book.author }}
+                items={ann.items}
+                onGo={(a) => {
+                  apiRef.current?.goTo(a.cfi);
+                  setPanel("none");
+                }}
+                onDelete={(a) => void ann.remove(a.id)}
+              />
+            ) : null}
 
             {panel === "toc" && info ? (
               <aside className="drawer" aria-label="Contents">

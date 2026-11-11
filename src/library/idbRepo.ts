@@ -1,23 +1,32 @@
+import type { Annotation, AnnotationRepo } from "../annotations/types";
 import type { Book, BookRepo } from "./types";
 
-// Browser / dev implementation of BookRepo, backed by IndexedDB.
+// Browser / dev implementation of the repos, backed by IndexedDB.
 // The Tauri build uses SQLite + files instead (see tauriRepo.ts).
 
 const DB_NAME = "folio";
+const DB_VERSION = 2;
 const STORES = ["books", "files", "covers"] as const;
 
 const openDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      db.createObjectStore("books", { keyPath: "id" });
-      db.createObjectStore("files");
-      db.createObjectStore("covers");
+      // Each step is guarded so upgrading from any earlier version works.
+      if (!db.objectStoreNames.contains("books")) db.createObjectStore("books", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("files")) db.createObjectStore("files");
+      if (!db.objectStoreNames.contains("covers")) db.createObjectStore("covers");
+      if (!db.objectStoreNames.contains("annotations")) {
+        db.createObjectStore("annotations", { keyPath: "id" }).createIndex("bookId", "bookId");
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+
+let sharedDb: Promise<IDBDatabase> | null = null;
+const getDb = () => (sharedDb ??= openDb());
 
 const wrap = <T,>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -32,9 +41,35 @@ const done = (tx: IDBTransaction): Promise<void> =>
     tx.onabort = () => reject(tx.error);
   });
 
+export const createIdbAnnotationRepo = (): AnnotationRepo => ({
+  async list(bookId) {
+    const d = await getDb();
+    return wrap<Annotation[]>(d.transaction("annotations").objectStore("annotations").index("bookId").getAll(bookId));
+  },
+  async put(annotation) {
+    const d = await getDb();
+    const tx = d.transaction("annotations", "readwrite");
+    tx.objectStore("annotations").put(annotation);
+    await done(tx);
+  },
+  async remove(id) {
+    const d = await getDb();
+    const tx = d.transaction("annotations", "readwrite");
+    tx.objectStore("annotations").delete(id);
+    await done(tx);
+  },
+  async removeForBook(bookId) {
+    const d = await getDb();
+    const tx = d.transaction("annotations", "readwrite");
+    const store = tx.objectStore("annotations");
+    const keys = await wrap<IDBValidKey[]>(store.index("bookId").getAllKeys(bookId));
+    for (const k of keys) store.delete(k);
+    await done(tx);
+  },
+});
+
 export const createIdbRepo = (): BookRepo => {
-  let dbp: Promise<IDBDatabase> | null = null;
-  const db = () => (dbp ??= openDb());
+  const db = getDb;
 
   return {
     async list() {
