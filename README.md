@@ -14,6 +14,9 @@ A beautiful, easy-to-use EPUB reader for desktop, with Android planned. Built wi
 - **Search inside a book** (`Ctrl/Cmd + F`): results stream in grouped by chapter, matches are outlined on the page, and a click jumps to them. Options for match case and whole words.
 - **Backup and restore** of your notes, highlights, bookmarks, reading positions and reading history to a single JSON file. Restoring merges safely (never deletes), and notes for a book you haven't re-imported yet reattach when you add that same file.
 - **Reading statistics:** time read today and over the last 7 days, a day streak, books finished, a small chart and your most-read books. Time only counts while you are actually reading (the window is visible and there was recent input), so a book left open overnight adds nothing.
+- **Open books from Explorer.** Double-click an `.epub` (or choose "Open with Folio"). If Folio is already running, the book opens in that window instead of starting a second copy. The window remembers its size and position.
+- **Keyboard friendly.** Arrow keys, Page Up/Down, Space (Shift+Space goes back), Home and End turn pages from anywhere in the window; `Esc` closes panels; `F11` toggles fullscreen; `Ctrl/Cmd + F` searches. Theme can follow your system's light/dark setting.
+- **Accessible.** Every colour pairing is tested against WCAG AA contrast, headings and landmarks are labelled, there is a skip link and a visible focus ring, and animations respect "reduce motion".
 - **Offline by design.** Fonts are bundled, nothing is fetched from the internet, and your books and notes stay on your device.
 - **Formats:** EPUB (primary), plus MOBI, AZW3, FB2 and CBZ through foliate-js.
 - Settings are remembered separately for phone, tablet and desktop-sized windows.
@@ -39,12 +42,20 @@ pnpm dev          # or just the web UI at http://localhost:1420
 
 If you already cloned without `--recurse-submodules`, run `git submodule update --init`.
 
+### Build an installer (Windows)
+
+```bash
+pnpm tauri build   # NSIS installer, per-user (no admin needed), in src-tauri/target/release/bundle/nsis/
+```
+
+The first release build compiles the whole Rust dependency tree and needs a few GB of free memory. If the machine is tight, close other apps and limit parallelism with `CARGO_BUILD_JOBS=2`.
+
 ### Other commands
 
 ```bash
 pnpm test         # unit tests (vitest)
 pnpm build        # typecheck + production web build
-pnpm tauri build  # package the desktop app
+pnpm notices      # regenerate THIRD_PARTY_NOTICES.md
 ```
 
 > **Windows note:** if your Rust toolchain is the GNU one (`stable-x86_64-pc-windows-gnu`) the project builds as-is. See [`docs/android.md`](docs/android.md) for what to change before an Android build.

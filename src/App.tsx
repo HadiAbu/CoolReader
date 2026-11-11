@@ -21,6 +21,8 @@ import { applySearchEvent, idleSearch, startSearch, type SearchHit, type SearchS
 import type { ReadingRow } from "./stats/logic";
 import { useReadingTimer } from "./stats/useReadingTimer";
 import { toggleFullscreen } from "./platform/fullscreen";
+import { openExternal } from "./platform/openExternal";
+import { initOpenWith } from "./platform/openWith";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, resolveSurface, themes } from "./themes/themes";
@@ -363,6 +365,27 @@ export default function App() {
     return () => window.removeEventListener("keydown", on);
   }, [view.kind, handleKeyAction]);
 
+  // ---- "Open with Folio": files handed over by the OS (double-click in Explorer, or a second launch) ----
+  const handleOsFiles = async (files: File[]) => {
+    const res = await lib.importFiles(files);
+    const first = res?.opened[0];
+    if (first) await openBook(first);
+  };
+  const osFilesRef = useRef(handleOsFiles);
+  osFilesRef.current = handleOsFiles;
+  useEffect(() => {
+    let off = () => {};
+    let disposed = false;
+    void initOpenWith((files) => void osFilesRef.current(files)).then((unsubscribe) => {
+      if (disposed) unsubscribe();
+      else off = unsubscribe;
+    });
+    return () => {
+      disposed = true;
+      off();
+    };
+  }, []);
+
   const pickFiles = () => inputRef.current?.click();
   const importFiles = (files: FileList | File[] | null | undefined) => {
     const list = Array.from(files ?? []);
@@ -547,6 +570,7 @@ export default function App() {
               onPinch={onPinch}
               onFind={() => setPanel("search")}
               onKeyAction={handleKeyAction}
+              onExternalLink={(href) => void openExternal(href)}
               onActivity={timer.touch}
               onSelection={(s) => {
                 setSelection(s);

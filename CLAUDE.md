@@ -19,6 +19,15 @@ pnpm vitest run -t "pinchZoomTarget"               # one test by name
 
 To drive the real native webview (clicks, JS, assertions) launch it with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" pnpm tauri dev`, then talk Chrome DevTools Protocol to `http://127.0.0.1:9222/json` (Node 22 has a global `WebSocket`; send `Runtime.evaluate`). Only stop the node/epub-reader processes whose command line contains this repo's path.
 
+```bash
+cd src-tauri && cargo test --lib     # Rust unit tests (the open-with allow-list logic)
+pnpm notices                          # regenerate THIRD_PARTY_NOTICES.md from the real license files
+node scripts/gen-icon.mjs && pnpm tauri icon icons-source/app-icon.png   # redraw the app icon + all sizes
+pnpm tauri build                      # NSIS installer (per-user); heavy, see below
+```
+
+Low on memory? Prefix cargo-heavy commands with `CARGO_BUILD_JOBS=2` (the machine has ~7 GB and the dev app was once killed for memory). The release profile deliberately uses thin LTO and 4 codegen units for the same reason.
+
 There is no linter or formatter configured. `pnpm build` must stay clean (`noUnusedLocals`/`noUnusedParameters` are on).
 
 ## Architecture
@@ -39,6 +48,8 @@ There is no linter or formatter configured. `pnpm build` must stay clean (`noUnu
 **Settings are per device class.** `state/settings.ts` creates one persisted zustand store keyed `folio.settings.<phone|tablet|desktop>`, chosen once at module load from `window.innerWidth`. So a narrow window loads different saved settings than a wide one; this is intended. Text zoom (reader) and `uiScale` (root font size, so use `rem`) are independent.
 
 **Storage sits behind two interfaces** in `library/types.ts` and `annotations/types.ts` (`BookRepo`, `AnnotationRepo`). `library/repo.ts` picks the backend; today it is IndexedDB (`library/idbRepo.ts`, DB version 2, guarded upgrades) in both the browser and the Tauri webview. A SQLite + files backend is planned but deliberately not built. Books are keyed by the first 16 hex chars of the file's SHA-256, so re-importing is a no-op. `App.tsx` owns the library/reader view state, saves progress debounced at 600 ms, and flushes on "back to library" and `pagehide`.
+
+**Native shell** (`src-tauri/src/lib.rs`, small on purpose). Window size/position via `tauri-plugin-window-state`; `tauri-plugin-single-instance` forwards a second launch's arguments to the running window. "Open with": the OS passes book paths as arguments; Rust canonicalises them, keeps them in an allow-list and queues them; the UI pulls them with `take_pending_opens` and reads bytes with `read_opened_file`, which refuses any path the OS did not hand over, non-book extensions and files over 512 MB. Frontend half is `platform/openWith.ts`; `App.tsx` imports then opens the first book. Links inside books never open in the app: `ReaderView` cancels foliate's `external-link` and `platform/openExternal.ts` allows only http, https and mailto through the opener plugin. Desktop-only crates sit under a `cfg(not(android/ios))` dependency table so Android can still build later. `bundle.fileAssociations`, the NSIS per-user installer and the bundled LICENSE/notices live in `tauri.conf.json`; `devCsp` is the looser dev-only CSP.
 
 **Keyboard.** `reader/keys.ts` maps keys to actions (arrows are visual left/right so RTL books flip; Page keys and Space are logical prev/next). Because the book is in iframes, `ReaderView` forwards the same actions through `onKeyAction`, and `App.tsx` has one `handleKeyAction` for both the window and the frames. Navigation keys never fire from text fields or on Space over a button; Escape (close toolbar, then side panel) and F11 work everywhere. Fullscreen uses the Tauri window API with a browser fallback (`platform/fullscreen.ts`; needs the `core:window:allow-*-fullscreen` permissions in `src-tauri/capabilities`). The surface preference can be "system" (`resolveSurface` in `themes.ts`), which follows `prefers-color-scheme` live.
 

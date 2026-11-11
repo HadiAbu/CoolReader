@@ -101,6 +101,8 @@ interface Props {
   onKeyAction?: (a: KeyAction) => void;
   /** Any input inside the book (keys, taps, wheel) or a page change; used to time reading. */
   onActivity?: () => void;
+  /** A link in the book that points outside it. The app decides whether and how to open it. */
+  onExternalLink?: (href: string) => void;
   /** Two-finger pinch on the book text. ratio = currentDistance / startDistance. */
   onPinch?: (p: { phase: "start" | "move" | "end"; ratio: number }) => void;
   onAnnotationClick?: (info: { id: string; rect: ScreenRect }) => void;
@@ -147,6 +149,7 @@ export function ReaderView({
   onFind,
   onKeyAction,
   onActivity,
+  onExternalLink,
   onPinch,
   onAnnotationClick,
   apiRef,
@@ -156,8 +159,8 @@ export function ReaderView({
   const drawnRef = useRef(new Map<string, Annotation>());
 
   // Latest props, readable from long-lived listeners without re-running the open effect.
-  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onPinch, onAnnotationClick });
-  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onPinch, onAnnotationClick };
+  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onExternalLink, onPinch, onAnnotationClick });
+  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onFind, onKeyAction, onActivity, onExternalLink, onPinch, onAnnotationClick };
 
   // Open a book.
   useEffect(() => {
@@ -274,6 +277,14 @@ export function ReaderView({
       if (hit) latest.current.onAnnotationClick?.({ id: hit.id, rect: toScreenRect(range) });
     };
 
+    // Never let foliate open links itself (it would use window.open inside the app webview).
+    const onExternal = (e: Event) => {
+      e.preventDefault();
+      const { href_, a } = (e as CustomEvent<{ href_?: string; a?: HTMLAnchorElement }>).detail ?? {};
+      const href = href_ || a?.href;
+      if (href) latest.current.onExternalLink?.(href);
+    };
+    view.addEventListener("external-link", onExternal);
     view.addEventListener("load", onLoad);
     view.addEventListener("relocate", onRel);
     view.addEventListener("create-overlay", onCreateOverlay);
@@ -322,6 +333,7 @@ export function ReaderView({
 
     return () => {
       cancelled = true;
+      view.removeEventListener("external-link", onExternal);
       view.removeEventListener("load", onLoad);
       view.removeEventListener("relocate", onRel);
       view.removeEventListener("create-overlay", onCreateOverlay);
