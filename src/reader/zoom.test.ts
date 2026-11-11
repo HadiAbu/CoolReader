@@ -4,6 +4,7 @@ import {
   clampZoom,
   computeLayout,
   deviceClassForWidth,
+  pinchZoomTarget,
   stepZoom,
   zoomActionForEvent,
   ZOOM_DEFAULT,
@@ -60,6 +61,28 @@ describe("zoomActionForEvent", () => {
     expect(zoomActionForEvent({ ctrlKey: true, metaKey: false, deltaY: -100 })).toBe("in");
     expect(zoomActionForEvent({ ctrlKey: true, metaKey: false, deltaY: 100 })).toBe("out");
     expect(zoomActionForEvent({ ctrlKey: false, metaKey: false, deltaY: 100 })).toBeNull();
+  });
+});
+
+describe("pinchZoomTarget", () => {
+  it("scales from the starting zoom and snaps to the step", () => {
+    expect(pinchZoomTarget(100, 1)).toBe(100);
+    expect(pinchZoomTarget(100, 1.5)).toBe(150);
+    expect(pinchZoomTarget(100, 2)).toBe(200);
+    expect(pinchZoomTarget(100, 0.8)).toBe(80);
+    expect(pinchZoomTarget(100, 1.04)).toBe(100);
+  });
+  it("returns to the start when the fingers return", () => {
+    expect(pinchZoomTarget(130, 1)).toBe(130);
+  });
+  it("clamps to the zoom range", () => {
+    expect(pinchZoomTarget(200, 5)).toBe(300);
+    expect(pinchZoomTarget(100, 0.1)).toBe(70);
+  });
+  it("ignores nonsense ratios", () => {
+    expect(pinchZoomTarget(120, 0)).toBe(120);
+    expect(pinchZoomTarget(120, Number.NaN)).toBe(120);
+    expect(pinchZoomTarget(120, -1)).toBe(120);
   });
 });
 

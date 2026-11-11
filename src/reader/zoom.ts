@@ -42,7 +42,17 @@ export const zoomActionForEvent = (
   return null;
 };
 
-export const clampUiScale =(s: number): number =>
+/**
+ * Map a pinch gesture to a text zoom. `ratio` is currentDistance / startDistance between the two
+ * fingers. Absolute from the zoom at gesture start (not incremental), snapped to the zoom step,
+ * so the result never drifts and spreading then pinching back returns to the starting size.
+ */
+export const pinchZoomTarget = (startZoom: number, ratio: number): number => {
+  if (!Number.isFinite(ratio) || ratio <= 0) return clampZoom(startZoom);
+  return clampZoom(Math.round((startZoom * ratio) / ZOOM_STEP) * ZOOM_STEP);
+};
+
+export const clampUiScale = (s: number): number =>
   Number.isFinite(s) ? Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(s))) : 100;
 
 export const deviceClassForWidth = (width: number): DeviceClass =>

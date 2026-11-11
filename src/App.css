@@ -162,3 +162,13 @@ input[type="range"] { accent-color: var(--accent); }
 }
 .toc-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .toc-item[aria-current="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+
+/* Phones: the settings panel becomes a bottom sheet so it never covers the page you're reading. */
+@media (max-width: 600px) {
+  .popover-anchor .panel {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: 100%;
+    max-height: 55vh; border-radius: calc(var(--radius) + 8px) calc(var(--radius) + 8px) 0 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -12px 40px rgb(0 0 0 / 0.3);
+  }
+}

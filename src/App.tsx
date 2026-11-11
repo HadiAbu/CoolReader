@@ -13,7 +13,7 @@ import {
   type ScreenRect,
   type SelectionInfo,
 } from "./reader/ReaderView";
-import { computeLayout, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
+import { computeLayout, pinchZoomTarget, zoomActionForEvent, type ZoomAction } from "./reader/zoom";
 import { useSettings } from "./state/settings";
 import { fontFaceCss, READER_FONT } from "./themes/fonts";
 import { applyTheme, readerCss, themes } from "./themes/themes";
@@ -97,6 +97,14 @@ export default function App() {
       window.removeEventListener("wheel", on);
     };
   }, [doZoom]);
+
+  // Pinch maps absolutely from the zoom at the start of the gesture, so it never drifts.
+  const pinchStart = useRef(zoom);
+  const onPinch = useCallback((p: { phase: "start" | "move" | "end"; ratio: number }) => {
+    const s = useSettings.getState();
+    if (p.phase === "start") pinchStart.current = s.zoom;
+    else if (p.phase === "move") s.setZoom(pinchZoomTarget(pinchStart.current, p.ratio));
+  }, []);
 
   const { patch } = lib;
   const flushSave = useCallback(() => {
@@ -332,6 +340,7 @@ export default function App() {
               onRelocate={onRelocate}
               onError={(e) => setError(e instanceof Error ? e.message : String(e))}
               onZoomAction={doZoom}
+              onPinch={onPinch}
               onSelection={(s) => {
                 setSelection(s);
                 setActive(null);

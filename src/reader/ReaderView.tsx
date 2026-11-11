@@ -83,6 +83,8 @@ interface Props {
   onError?: (e: unknown) => void;
   onZoomAction?: (a: ZoomAction) => void;
   onSelection?: (s: SelectionInfo | null) => void;
+  /** Two-finger pinch on the book text. ratio = currentDistance / startDistance. */
+  onPinch?: (p: { phase: "start" | "move" | "end"; ratio: number }) => void;
   onAnnotationClick?: (info: { id: string; rect: ScreenRect }) => void;
   apiRef?: { current: ReaderApi | null };
 }
@@ -124,6 +126,7 @@ export function ReaderView({
   onError,
   onZoomAction,
   onSelection,
+  onPinch,
   onAnnotationClick,
   apiRef,
 }: Props) {
@@ -132,8 +135,8 @@ export function ReaderView({
   const drawnRef = useRef(new Map<string, Annotation>());
 
   // Latest props, readable from long-lived listeners without re-running the open effect.
-  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onAnnotationClick });
-  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onAnnotationClick };
+  const latest = useRef({ layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onPinch, onAnnotationClick });
+  latest.current = { layout, css, startCfi, annotations, onRelocate, onBook, onError, onZoomAction, onSelection, onPinch, onAnnotationClick };
 
   // Open a book.
   useEffect(() => {
@@ -181,6 +184,27 @@ export function ReaderView({
           latest.current.onSelection?.(null);
         }
       };
+      // Pinch to zoom: report the finger-distance ratio; the app maps it to a zoom level.
+      let startDist = 0;
+      const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      doc.addEventListener("touchstart", (ev) => {
+        if (ev.touches.length === 2) {
+          startDist = dist(ev.touches);
+          if (startDist > 0) latest.current.onPinch?.({ phase: "start", ratio: 1 });
+        }
+      }, { passive: true });
+      doc.addEventListener("touchmove", (ev) => {
+        if (ev.touches.length === 2 && startDist > 0) {
+          ev.preventDefault();
+          latest.current.onPinch?.({ phase: "move", ratio: dist(ev.touches) / startDist });
+        }
+      }, { passive: false });
+      doc.addEventListener("touchend", (ev) => {
+        if (startDist > 0 && ev.touches.length < 2) {
+          startDist = 0;
+          latest.current.onPinch?.({ phase: "end", ratio: 1 });
+        }
+      });
       doc.addEventListener("pointerup", () => setTimeout(checkSelection, 10));
       doc.addEventListener("keyup", (ev) => {
         if (ev.shiftKey && ev.key.startsWith("Arrow")) checkSelection();
