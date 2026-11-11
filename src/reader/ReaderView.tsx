@@ -304,7 +304,13 @@ export function ReaderView({
         view.renderer.setStyles?.(latest.current.css);
         const { title, author } = view.book.metadata ?? {};
         latest.current.onBook?.({ title: lang(title) || file.name, author: lang(author), toc: view.book.toc ?? [] });
-        await view.init({ lastLocation: latest.current.startCfi ?? undefined, showTextStart: false });
+        try {
+          await view.init({ lastLocation: latest.current.startCfi ?? undefined, showTextStart: false });
+        } catch (err) {
+          // A saved position that no longer resolves (corrupt or from a different file) must not make the book unopenable.
+          if (!latest.current.startCfi || cancelled) throw err;
+          await view.init({ showTextStart: false });
+        }
       } catch (err) {
         if (!cancelled) latest.current.onError?.(err);
       }

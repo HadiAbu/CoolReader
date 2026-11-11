@@ -208,6 +208,14 @@ describe("backup bounds (audit H4/H5)", () => {
     }
   });
 
+  it("drops over-long CFIs", () => {
+    const long = "epubcfi(" + "/2".repeat(2_000) + ")";
+    const a = { id: "n", kind: "bookmark", cfi: long, color: "yellow", text: "", note: "", label: "", fraction: 0, createdAt: 1, updatedAt: 1 };
+    const r = parseBackup(wrap([], [{ id: "b", title: "t", cfi: long, annotations: [a] }]));
+    expect(r.ok && r.backup.books[0].annotations).toHaveLength(0);
+    expect(r.ok && r.backup.books[0].cfi).toBeNull();
+  });
+
   it("exposes a file-size ceiling", () => {
     expect(MAX_BACKUP_BYTES).toBe(25 * 1024 * 1024);
   });

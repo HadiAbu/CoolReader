@@ -20,6 +20,8 @@ const MAX_TEXT = 5_000;
 const MAX_NOTE = 20_000;
 const MAX_LABEL = 500;
 const MAX_TITLE = 500;
+/** Real CFIs are well under 1 KB; anything longer is junk that would only slow the parser. */
+const MAX_CFI = 2_000;
 
 export interface BackupBook {
   id: string;
@@ -85,7 +87,7 @@ const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFin
 const asAnnotation = (v: unknown, bookId: string): Annotation | null => {
   if (!v || typeof v !== "object") return null;
   const a = v as Record<string, unknown>;
-  if (!isStr(a.id) || !a.id || !isStr(a.cfi) || !a.cfi) return null;
+  if (!isStr(a.id) || !a.id || !isStr(a.cfi) || !a.cfi || a.cfi.length > MAX_CFI) return null;
   if (!KINDS.includes(a.kind as AnnotationKind)) return null;
   if (!COLOR_NAMES.includes(a.color as Annotation["color"])) return null;
   if (!isStr(a.text) || !isStr(a.note) || !isStr(a.label)) return null;
@@ -150,7 +152,7 @@ export const parseBackup = (text: string): ParseResult => {
       title: isStr(b.title) ? b.title.slice(0, MAX_TITLE) : "Untitled",
       author: isStr(b.author) ? b.author.slice(0, MAX_TITLE) : "",
       progress: isNum(b.progress) ? Math.min(1, Math.max(0, b.progress)) : 0,
-      cfi: isStr(b.cfi) ? b.cfi : null,
+      cfi: isStr(b.cfi) && b.cfi.length <= MAX_CFI ? b.cfi : null,
       lastOpenedAt: isNum(b.lastOpenedAt) ? b.lastOpenedAt : null,
       annotations,
     });
