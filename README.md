@@ -1,5 +1,8 @@
 # CoolReader (Folio)
 
+<img width="947" height="480" alt="image" src="https://github.com/user-attachments/assets/7fd3be83-0452-48bd-9198-473bfdd44b0c" />
+<img width="458" height="467" alt="image" src="https://github.com/user-attachments/assets/e7707155-8cf2-4e40-ba60-246dc4f5c011" />
+
 A beautiful, easy-to-use EPUB reader for desktop, with Android planned. Built with Tauri v2, React and TypeScript on top of the [foliate-js](https://github.com/johnfactotum/foliate-js) rendering engine.
 
 > **Status:** early development. The reader, library, highlights and themes work on desktop (Windows tested). Android is not built yet.
